@@ -331,7 +331,10 @@
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 15px;
-        margin-bottom: 30px;
+        margin-bottom: 20px;
+        max-height: 300px;
+        overflow-y: auto;
+        padding-right: 5px;
     }
 
     .char-card {
@@ -381,6 +384,44 @@
     .modal-content {
         max-width: 400px;
         width: 100%;
+        position: relative;
+        /* For absolute positioning of X */
+    }
+
+    .close-modal {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        width: 30px;
+        height: 30px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.2s;
+        z-index: 10;
+    }
+
+    .close-modal:hover {
+        background: rgba(255, 68, 68, 0.8);
+        border-color: #ff4444;
+    }
+
+    #save-custom-btn {
+        background: #00FF88;
+        color: #111;
+        font-size: 16px;
+        letter-spacing: 1px;
+    }
+
+    #save-custom-btn:hover {
+        background: #00dd77;
+        transform: scale(1.02);
     }
 
     .toggle-password {
@@ -445,15 +486,21 @@
             <h2 style="text-align: center; margin-bottom: 20px; color: #FFCC00;">Escolha seu Personagem</h2>
             <div class="char-grid">
                 <div class="char-card active" data-sprite="playerDown">
-                    <div class="char-sprite" style="background: url('./img/playerDown.png') no-repeat 0 0;">
-                    </div>
+                    <div class="char-sprite" style="background: url('./img/playerDown.png') no-repeat 0 0;"></div>
                     <p>Personagem 1</p>
                 </div>
-                <!-- Vaga para próximos personagens -->
-                <div class="char-card" data-sprite="playerDown" style="opacity: 0.5; filter: grayscale(1);">
-                    <div class="char-sprite"
-                        style="background: url('./img/playerDown.png') no-repeat 0 0; filter: hue-rotate(90deg);"></div>
-                    <p>Em breve...</p>
+                <!-- Slots para novos personagens -->
+                <div class="char-card" data-sprite="char2">
+                    <div class="char-sprite" style="background: url('./img/char2_down.png') no-repeat 0 0;"></div>
+                    <p>Personagem 2</p>
+                </div>
+                <div class="char-card" data-sprite="char3">
+                    <div class="char-sprite" style="background: url('./img/char3_down.png') no-repeat 0 0;"></div>
+                    <p>Personagem 3</p>
+                </div>
+                <div class="char-card" data-sprite="char4">
+                    <div class="char-sprite" style="background: url('./img/char4_down.png') no-repeat 0 0;"></div>
+                    <p>Personagem 4</p>
                 </div>
             </div>
             <button id="start-game-btn" class="auth-btn">ENTRAR
@@ -503,6 +550,7 @@
 <!-- Customization Modal -->
 <div id="custom-overlay" style="display: none;" class="modal-overlay">
     <div class="modal-content" id="auth-box">
+        <button id="close-custom-btn" class="close-modal">&times;</button>
         <h2 style="text-align: center; margin-bottom: 20px; color: #FFCC00;">Personalizações</h2>
         <div class="char-grid">
             <!-- Reuse general char-card class for auto-listeners -->
@@ -510,16 +558,20 @@
                 <div class="char-sprite" style="background: url('./img/playerDown.png') no-repeat 0 0;"></div>
                 <p>Personagem 1</p>
             </div>
-            <div class="char-card" data-sprite="playerDown" style="opacity: 0.5; filter: grayscale(1);">
-                <div class="char-sprite"
-                    style="background: url('./img/playerDown.png') no-repeat 0 0; filter: hue-rotate(90deg);"></div>
-                <p>Em breve...</p>
+            <div class="char-card" data-sprite="char2">
+                <div class="char-sprite" style="background: url('./img/char2_down.png') no-repeat 0 0;"></div>
+                <p>Personagem 2</p>
+            </div>
+            <div class="char-card" data-sprite="char3">
+                <div class="char-sprite" style="background: url('./img/char3_down.png') no-repeat 0 0;"></div>
+                <p>Personagem 3</p>
+            </div>
+            <div class="char-card" data-sprite="char4">
+                <div class="char-sprite" style="background: url('./img/char4_down.png') no-repeat 0 0;"></div>
+                <p>Personagem 4</p>
             </div>
         </div>
-        <div style="display: flex; gap: 10px;">
-            <button id="save-custom-btn" class="auth-btn">SALVAR</button>
-            <button id="close-custom-btn" class="auth-btn auth-input">X</button>
-        </div>
+        <button id="save-custom-btn" class="auth-btn">SALVAR ALTERAÇÕES</button>
     </div>
 </div>
 

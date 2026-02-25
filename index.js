@@ -46,6 +46,63 @@ playerLeftImage.src = './img/playerLeft.png'
 const playerRightImage = new Image()
 playerRightImage.src = './img/playerRight.png'
 
+// Character 2 Scaffolding (Ghost)
+const char2DownImage = new Image()
+char2DownImage.src = './img/char2_down.png'
+const char2UpImage = new Image()
+char2UpImage.src = './img/char2_up.png'
+const char2LeftImage = new Image()
+char2LeftImage.src = './img/char2_left.png'
+const char2RightImage = new Image()
+char2RightImage.src = './img/char2_right.png'
+
+// Character 3 Scaffolding (Ghost)
+const char3DownImage = new Image()
+char3DownImage.src = './img/char3_down.png'
+const char3UpImage = new Image()
+char3UpImage.src = './img/char3_up.png'
+const char3LeftImage = new Image()
+char3LeftImage.src = './img/char3_left.png'
+const char3RightImage = new Image()
+char3RightImage.src = './img/char3_right.png'
+
+// Character 4 Scaffolding (Ghost)
+const char4DownImage = new Image()
+char4DownImage.src = './img/char4_down.png'
+const char4UpImage = new Image()
+char4UpImage.src = './img/char4_up.png'
+const char4LeftImage = new Image()
+char4LeftImage.src = './img/char4_left.png'
+const char4RightImage = new Image()
+char4RightImage.src = './img/char4_right.png'
+
+const spriteMap = {
+    'playerDown': {
+        down: playerDownImage,
+        up: playerUpImage,
+        left: playerLeftImage,
+        right: playerRightImage
+    },
+    'char2': {
+        down: char2DownImage,
+        up: char2UpImage,
+        left: char2LeftImage,
+        right: char2RightImage
+    },
+    'char3': {
+        down: char3DownImage,
+        up: char3UpImage,
+        left: char3LeftImage,
+        right: char3RightImage
+    },
+    'char4': {
+        down: char4DownImage,
+        up: char4UpImage,
+        left: char4LeftImage,
+        right: char4RightImage
+    }
+}
+
 const player = new Sprite({
     position: {
         x: canvas.width / 2 - 192 / 4 / 2,
@@ -61,7 +118,7 @@ const player = new Sprite({
         right: playerRightImage,
         down: playerDownImage
     },
-    name: '' // Will be set on join
+    name: 'Player'
 })
 
 const remotePlayers = {}
@@ -106,14 +163,9 @@ socket.on('init', (players) => {
         if (id !== socket.id) {
             remotePlayers[id] = new Sprite({
                 position: { x: players[id].x + background.position.x, y: players[id].y + background.position.y },
-                image: players[id].sprite === 'playerDown' ? playerDownImage : playerDownImage, // Expand this map as needed
+                image: (spriteMap[players[id].sprite] || spriteMap['playerDown']).down,
                 frames: { max: 4 },
-                sprites: {
-                    up: playerUpImage,
-                    left: playerLeftImage,
-                    right: playerRightImage,
-                    down: playerDownImage
-                },
+                sprites: spriteMap[players[id].sprite] || spriteMap['playerDown'],
                 name: players[id].name
             })
         }
@@ -123,14 +175,9 @@ socket.on('init', (players) => {
 socket.on('newPlayer', ({ id, player: p }) => {
     remotePlayers[id] = new Sprite({
         position: { x: p.x + background.position.x, y: p.y + background.position.y },
-        image: p.sprite === 'playerDown' ? playerDownImage : playerDownImage, // Expand this map as needed
+        image: (spriteMap[p.sprite] || spriteMap['playerDown']).down,
         frames: { max: 4 },
-        sprites: {
-            up: playerUpImage,
-            left: playerLeftImage,
-            right: playerRightImage,
-            down: playerDownImage
-        },
+        sprites: spriteMap[p.sprite] || spriteMap['playerDown'],
         name: p.name
     })
 })
@@ -305,6 +352,12 @@ function joinGame() {
 
     player.name = currentUser.profile.name;
 
+    // Update player sprites based on selection
+    if (spriteMap[selectedSprite]) {
+        player.sprites = spriteMap[selectedSprite];
+        player.image = player.sprites.down;
+    }
+
     socket.emit('join', {
         name: player.name,
         sprite: selectedSprite
@@ -360,7 +413,10 @@ saveCustomBtn.onclick = async () => {
         });
 
         // Update local player and inform others
-        player.image = player.sprites.down; // Update current view if needed
+        if (spriteMap[selectedSprite]) {
+            player.sprites = spriteMap[selectedSprite];
+            player.image = player.sprites.down;
+        }
         socket.emit('updateSprite', { sprite: selectedSprite });
         customOverlay.style.display = 'none';
     } catch (e) {
