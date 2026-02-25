@@ -355,6 +355,7 @@ async function stopScreenSharing() {
     document.getElementById('toggle-screen').classList.remove('active')
     document.getElementById('screen-share-container').style.display = 'none'
     document.getElementById('screen-share-video').srcObject = null
+    document.getElementById('watch-screen').style.display = 'none'
     // Close all screen peer connections
     Object.keys(screenPeers).forEach(id => closeScreenPeer(id))
     emitScreen('stop', {})
@@ -362,13 +363,17 @@ async function stopScreenSharing() {
 
 document.getElementById('screen-share-close').addEventListener('click', () => {
     document.getElementById('screen-share-container').style.display = 'none'
-    if (currentSharerId) {
+    if (currentSharerId || isScreenSharing) {
         document.getElementById('watch-screen').style.display = 'inline-block'
     }
 })
 
 document.getElementById('watch-screen').addEventListener('click', () => {
-    if (currentSharerId) {
+    if (isScreenSharing) {
+        document.getElementById('screen-share-video').srcObject = screenStream
+        document.getElementById('screen-share-container').style.display = 'block'
+        document.getElementById('watch-screen').style.display = 'none'
+    } else if (currentSharerId) {
         document.getElementById('screen-share-container').style.display = 'block'
         document.getElementById('watch-screen').style.display = 'none'
     }
