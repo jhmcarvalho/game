@@ -716,6 +716,7 @@ function animate() {
 animate()
 
 window.addEventListener('keydown', (e) => {
+    if (document.activeElement.tagName === 'INPUT') return
     if (['w', 'a', 's', 'd'].includes(e.key) && !pressedKeys.includes(e.key)) {
         keys[e.key].pressed = true
         pressedKeys.push(e.key)
@@ -723,9 +724,95 @@ window.addEventListener('keydown', (e) => {
 })
 
 window.addEventListener('keyup', (e) => {
+    if (document.activeElement.tagName === 'INPUT') return
     if (['w', 'a', 's', 'd'].includes(e.key)) {
         keys[e.key].pressed = false
         const index = pressedKeys.indexOf(e.key)
         if (index > -1) pressedKeys.splice(index, 1)
     }
+})
+
+// Chat Logic
+const chatMessages = document.getElementById('chat-messages')
+const chatInput = document.getElementById('chat-input')
+const chatSend = document.getElementById('chat-send')
+const chatContainer = document.getElementById('chat-container')
+const chatToggle = document.getElementById('chat-toggle')
+const chatHeader = document.getElementById('chat-header')
+
+function sendMessage() {
+    const text = chatInput.value.trim()
+    if (text !== '') {
+        socket.emit('chatMessage', { message: text })
+        chatInput.value = ''
+    }
+}
+
+function toggleChat() {
+    chatContainer.classList.toggle('minimized')
+    chatToggle.textContent = chatContainer.classList.contains('minimized') ? '+' : '−'
+}
+
+chatHeader.addEventListener('click', toggleChat)
+chatSend.addEventListener('click', sendMessage)
+chatInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendMessage()
+})
+
+chatInput.addEventListener('focus', () => {
+    Object.values(keys).forEach(k => k.pressed = false)
+    pressedKeys.length = 0
+})
+
+// Draggable Logic
+function makeDraggable(header, container) {
+    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    header.onmousedown = dragMouseDown;
+
+    function dragMouseDown(e) {
+        e = e || window.event;
+        e.preventDefault();
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        document.onmouseup = closeDragElement;
+        document.onmousemove = elementDrag;
+        container.classList.add('dragging');
+        // Disable transition while dragging for smoothness
+        container.style.transition = 'none';
+        // Remove transform centering once we start moving it
+        if (container.style.transform !== 'none') {
+            const rect = container.getBoundingClientRect();
+            container.style.top = rect.top + 'px';
+            container.style.left = rect.left + 'px';
+            container.style.transform = 'none';
+        }
+    }
+
+    function elementDrag(e) {
+        e = e || window.event;
+        e.preventDefault();
+        pos1 = pos3 - e.clientX;
+        pos2 = pos4 - e.clientY;
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        container.style.top = (container.offsetTop - pos2) + "px";
+        container.style.left = (container.offsetLeft - pos1) + "px";
+    }
+
+    function closeDragElement() {
+        document.onmouseup = null;
+        document.onmousemove = null;
+        container.classList.remove('dragging');
+        container.style.transition = ''; // Restore transition if needed
+    }
+}
+
+makeDraggable(document.getElementById('screen-share-header'), document.getElementById('screen-share-container'))
+
+socket.on('chatMessage', (data) => {
+    const messageEl = document.createElement('div')
+    messageEl.className = 'chat-message'
+    messageEl.innerHTML = `[${data.timestamp}] <b>${data.name}:</b> ${data.message}`
+    chatMessages.appendChild(messageEl)
+    chatMessages.scrollTop = chatMessages.scrollHeight
 })

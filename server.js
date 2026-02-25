@@ -70,6 +70,17 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('newPlayer', { id: socket.id, player: players[socket.id] });
     });
 
+    socket.on('chatMessage', (data) => {
+        if (players[socket.id]) {
+            const messageData = {
+                name: players[socket.id].name,
+                message: data.message,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+            io.emit('chatMessage', messageData);
+        }
+    });
+
     socket.on('playerMove', (data) => {
         if (players[socket.id]) {
             players[socket.id].x = data.x;
