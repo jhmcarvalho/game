@@ -4,7 +4,10 @@ const { Server } = require('socket.io');
 const path = require('path');
 const forge = require('node-forge');
 
+const http = require('http');
+
 const app = express();
+const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
 
 // Generate a self-signed certificate using node-forge (SHA-256 + SAN, compatible with modern browsers)
 function generateCert() {
@@ -30,9 +33,16 @@ function generateCert() {
     };
 }
 
-console.log('Generating HTTPS certificate...');
-const { key, cert } = generateCert();
-const server = https.createServer({ key, cert }, app);
+let server;
+if (IS_PRODUCTION) {
+    console.log('Running in PRODUCTION mode (HTTP)...');
+    server = http.createServer(app);
+} else {
+    console.log('Running in LOCAL mode (HTTPS)...');
+    const { key, cert } = generateCert();
+    server = https.createServer({ key, cert }, app);
+}
+
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
