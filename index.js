@@ -106,7 +106,7 @@ socket.on('init', (players) => {
         if (id !== socket.id) {
             remotePlayers[id] = new Sprite({
                 position: { x: players[id].x + background.position.x, y: players[id].y + background.position.y },
-                image: playerDownImage,
+                image: players[id].sprite === 'playerDown' ? playerDownImage : playerDownImage, // Expand this map as needed
                 frames: { max: 4 },
                 sprites: {
                     up: playerUpImage,
@@ -123,7 +123,7 @@ socket.on('init', (players) => {
 socket.on('newPlayer', ({ id, player: p }) => {
     remotePlayers[id] = new Sprite({
         position: { x: p.x + background.position.x, y: p.y + background.position.y },
-        image: playerDownImage,
+        image: p.sprite === 'playerDown' ? playerDownImage : playerDownImage, // Expand this map as needed
         frames: { max: 4 },
         sprites: {
             up: playerUpImage,
@@ -192,14 +192,181 @@ async function getLocalStream() {
     }
 }
 
-document.getElementById('start-btn').addEventListener('click', () => {
-    const nameInput = document.getElementById('player-name-input')
-    const playerName = nameInput.value.trim() || 'Desconhecido'
-    player.name = playerName
-    document.getElementById('setup-overlay').style.display = 'none'
-    socket.emit('join', { name: playerName })
-    getLocalStream() // Pre-request permissions
-})
+// Auth & Setup Logic
+const loginView = document.getElementById('login-view');
+const registerView = document.getElementById('register-view');
+const charView = document.getElementById('char-view');
+const authError = document.getElementById('auth-error');
+
+document.getElementById('show-register').onclick = (e) => {
+    e.preventDefault();
+    loginView.style.display = 'none';
+    registerView.style.display = 'block';
+};
+
+document.getElementById('show-login').onclick = (e) => {
+    e.preventDefault();
+    registerView.style.display = 'none';
+    loginView.style.display = 'block';
+};
+
+let currentUser = null;
+let authToken = localStorage.getItem('token');
+let selectedSprite = 'playerDown';
+
+function handleAuthSuccess(data) {
+    currentUser = data.user;
+    authToken = data.token;
+    localStorage.setItem('token', authToken);
+
+    // If user already has a sprite, skip character selection and join directly
+    if (currentUser.profile.sprite) {
+        selectedSprite = currentUser.profile.sprite;
+        joinGame();
+    } else {
+        loginView.style.display = 'none';
+        registerView.style.display = 'none';
+        charView.style.display = 'block';
+    }
+}
+
+function togglePasswordVisibility(inputId) {
+    const input = document.getElementById(inputId);
+    const icon = input.nextElementSibling;
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.textContent = '🔒';
+    } else {
+        input.type = 'password';
+        icon.textContent = '👁️';
+    }
+}
+
+async function handleRegister() {
+    const name = document.getElementById('reg-name').value;
+    const email = document.getElementById('reg-email').value;
+    const password = document.getElementById('reg-password').value;
+
+    try {
+        const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        handleAuthSuccess(data);
+    } catch (err) {
+        authError.textContent = err.message;
+        authError.style.display = 'block';
+    }
+}
+
+async function handleLogin() {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        handleAuthSuccess(data);
+    } catch (err) {
+        authError.textContent = err.message;
+        authError.style.display = 'block';
+    }
+}
+
+document.getElementById('register-btn').onclick = handleRegister;
+document.getElementById('login-btn').onclick = handleLogin;
+
+document.querySelectorAll('.char-card').forEach(card => {
+    card.onclick = () => {
+        if (card.style.opacity === '0.5') return; // Ignore "Coming soon" cards
+        document.querySelectorAll('.char-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        selectedSprite = card.dataset.sprite;
+    };
+});
+
+document.getElementById('logout-btn').onclick = () => {
+    localStorage.removeItem('token');
+    window.location.reload();
+};
+
+function joinGame() {
+    if (!currentUser) return;
+
+    player.name = currentUser.profile.name;
+
+    socket.emit('join', {
+        name: player.name,
+        sprite: selectedSprite
+    });
+
+    document.getElementById('setup-overlay').style.display = 'none';
+    getLocalStream();
+}
+
+document.getElementById('start-game-btn').addEventListener('click', async () => {
+    // Save sprite to DB before joining
+    try {
+        await fetch('/api/auth/profile', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ sprite: selectedSprite })
+        });
+    } catch (e) {
+        console.error('Failed to save sprite preference:', e);
+    }
+
+    joinGame();
+});
+
+// REMOVED: old start-btn listener
+
+// Customization Menu Logic
+const customOverlay = document.getElementById('custom-overlay');
+const toggleCustomBtn = document.getElementById('toggle-custom');
+const closeCustomBtn = document.getElementById('close-custom-btn');
+const saveCustomBtn = document.getElementById('save-custom-btn');
+
+toggleCustomBtn.onclick = () => {
+    customOverlay.style.display = 'flex';
+};
+
+closeCustomBtn.onclick = () => {
+    customOverlay.style.display = 'none';
+};
+
+saveCustomBtn.onclick = async () => {
+    try {
+        await fetch('/api/auth/profile', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ sprite: selectedSprite })
+        });
+
+        // Update local player and inform others
+        player.image = player.sprites.down; // Update current view if needed
+        socket.emit('updateSprite', { sprite: selectedSprite });
+        customOverlay.style.display = 'none';
+    } catch (e) {
+        console.error('Failed to update customization:', e);
+    }
+};
 
 // UI Toggles
 document.getElementById('toggle-mic').addEventListener('click', (e) => {

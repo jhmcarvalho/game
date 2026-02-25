@@ -1,3 +1,4 @@
+require('dotenv').config({ override: true });
 const express = require('express');
 const https = require('https');
 const { Server } = require('socket.io');
@@ -7,7 +8,13 @@ const forge = require('node-forge');
 const http = require('http');
 
 const app = express();
+const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+const prisma = new PrismaClient();
 const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
 // Generate a self-signed certificate using node-forge (SHA-256 + SAN, compatible with modern browsers)
 function generateCert() {
@@ -48,6 +55,99 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, '/')));
+app.use(express.json());
+
+// --- Authentication Routes ---
+
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { email, password, name } = req.body;
+
+        if (!email || !password || !name) {
+            return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
+        }
+
+        const existingUser = await prisma.user.findUnique({ where: { email } });
+        if (existingUser) {
+            return res.status(400).json({ error: 'E-mail já cadastrado' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const user = await prisma.user.create({
+            data: {
+                email,
+                password: hashedPassword,
+                profile: {
+                    create: {
+                        name,
+                        sprite: 'playerDown'
+                    }
+                }
+            },
+            include: { profile: true }
+        });
+
+        const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+        res.status(201).json({ token, user: { id: user.id, email: user.email, profile: user.profile } });
+    } catch (error) {
+        console.error('Erro no registro:', error);
+        res.status(500).json({ error: 'Erro interno ao registrar usuário' });
+    }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        const user = await prisma.user.findUnique({
+            where: { email },
+            include: { profile: true }
+        });
+
+        if (!user || !user.password) {
+            return res.status(401).json({ error: 'Credenciais inválidas' });
+        }
+
+        const isValid = await bcrypt.compare(password, user.password);
+        if (!isValid) {
+            return res.status(401).json({ error: 'Credenciais inválidas' });
+        }
+
+        const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ token, user: { id: user.id, email: user.email, profile: user.profile } });
+    } catch (error) {
+        console.error('--- LOGIN ERROR ---');
+        console.error('Message:', error.message);
+        console.error('Code:', error.code);
+        if (error.clientVersion) console.error('Prisma Version:', error.clientVersion);
+        res.status(500).json({ error: 'Erro interno ao fazer login' });
+    }
+});
+
+app.patch('/api/auth/profile', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) return res.status(401).json({ error: 'Não autorizado' });
+
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const { sprite, name } = req.body;
+
+        const updatedProfile = await prisma.profile.update({
+            where: { userId: decoded.userId },
+            data: {
+                sprite: sprite || undefined,
+                name: name || undefined
+            }
+        });
+
+        res.json({ profile: updatedProfile });
+    } catch (error) {
+        console.error('Erro ao atualizar perfil:', error);
+        res.status(401).json({ error: 'Token inválido' });
+    }
+});
 
 const players = {};
 
@@ -55,19 +155,28 @@ io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
     socket.on('join', (data) => {
-        // Initial state for the new player
         players[socket.id] = {
+            id: socket.id,
             x: 0,
             y: 0,
-            sprite: 'down',
+            sprite: data.sprite || 'playerDown',
             name: data.name || `Player ${socket.id.substring(0, 4)}`
         };
-
-        // Send current players to the new connection
+        console.log(`Player ${socket.id} joined as ${players[socket.id].name} with sprite ${players[socket.id].sprite}`);
         socket.emit('init', players);
-
-        // Notify others about the new player
         socket.broadcast.emit('newPlayer', { id: socket.id, player: players[socket.id] });
+    });
+
+    socket.on('updateSprite', ({ sprite }) => {
+        if (players[socket.id]) {
+            players[socket.id].sprite = sprite;
+            socket.broadcast.emit('playerMove', {
+                id: socket.id,
+                x: players[socket.id].x,
+                y: players[socket.id].y,
+                sprite: 'down' // Force redraw with new sprite base
+            });
+        }
     });
 
     socket.on('chatMessage', (data) => {
