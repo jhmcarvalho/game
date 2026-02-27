@@ -6,6 +6,11 @@ canvas.height = 920
 
 const MAP_COLS = 202
 const MAP_ROWS = 144
+const TILE_SIZE = 12
+const SPRITE_SCALE = 2 // tamanho do personagem: 1 = original, 2 = dobro
+
+// Ponto de spawn seguro (tile livre no centro do escritório)
+const SPAWN_TILE = { col: 100, row: 35 }
 
 const collisionsMap = []
 for (let i = 0; i < collisions.length; i += MAP_COLS) {
@@ -13,11 +18,12 @@ for (let i = 0; i < collisions.length; i += MAP_COLS) {
 }
 
 const boundaries = []
-// Map: 202x144 tiles @ 12px = 2424x1728. Canvas: 1900x920.
-// offset centers the map on screen so player starts at center.
+// offset posiciona o mapa para que o jogador apareça no tile de spawn
+const _playerScreenX = canvas.width  / 2 - (192 / 4) * SPRITE_SCALE / 2
+const _playerScreenY = canvas.height / 2 - 68 * SPRITE_SCALE / 2
 const offset = {
-    x: -262,
-    y: -404
+    x: Math.round(_playerScreenX - SPAWN_TILE.col * TILE_SIZE),
+    y: Math.round(_playerScreenY - SPAWN_TILE.row * TILE_SIZE)
 }
 
 collisionsMap.forEach((row, i) => {
@@ -110,20 +116,19 @@ const spriteMap = {
 
 const player = new Sprite({
     position: {
-        x: canvas.width / 2 - 192 / 4 / 2,
-        y: canvas.height / 2 - 68 / 2
+        x: Math.round(canvas.width  / 2 - (192 / 4) * SPRITE_SCALE / 2),
+        y: Math.round(canvas.height / 2 - 68 * SPRITE_SCALE / 2)
     },
     image: playerDownImage,
-    frames: {
-        max: 4
-    },
+    frames: { max: 4 },
     sprites: {
         up: playerUpImage,
         left: playerLeftImage,
         right: playerRightImage,
         down: playerDownImage
     },
-    name: 'Player'
+    name: 'Player',
+    scale: SPRITE_SCALE
 })
 
 const remotePlayers = {}
@@ -155,11 +160,12 @@ const pressedKeys = []
 const movables = [background, ...boundaries, foreground]
 
 function rectangularCollision({ rectangle1, rectangle2 }) {
+    const s = rectangle1.scale || 1
     return (
-        rectangle1.position.x + rectangle1.width >= rectangle2.position.x &&
+        rectangle1.position.x + rectangle1.width * s >= rectangle2.position.x &&
         rectangle1.position.x <= rectangle2.position.x + rectangle2.width &&
         rectangle1.position.y <= rectangle2.position.y &&
-        rectangle1.position.y + 68 >= rectangle2.position.y
+        rectangle1.position.y + 68 * s >= rectangle2.position.y
     )
 }
 
@@ -171,7 +177,8 @@ socket.on('init', (players) => {
                 image: (spriteMap[players[id].sprite] || spriteMap['playerDown']).down,
                 frames: { max: 4 },
                 sprites: spriteMap[players[id].sprite] || spriteMap['playerDown'],
-                name: players[id].name
+                name: players[id].name,
+                scale: SPRITE_SCALE
             })
         }
     })
@@ -183,7 +190,8 @@ socket.on('newPlayer', ({ id, player: p }) => {
         image: (spriteMap[p.sprite] || spriteMap['playerDown']).down,
         frames: { max: 4 },
         sprites: spriteMap[p.sprite] || spriteMap['playerDown'],
-        name: p.name
+        name: p.name,
+        scale: SPRITE_SCALE
     })
 })
 
@@ -734,7 +742,7 @@ function animate() {
 
     // Draw communication aura for the local player
     c.beginPath()
-    c.arc(player.position.x + player.width / 2, player.position.y + player.height / 2, PROXIMITY_THRESHOLD, 0, Math.PI * 2)
+    c.arc(player.position.x + player.width * SPRITE_SCALE / 2, player.position.y + 68 * SPRITE_SCALE / 2, PROXIMITY_THRESHOLD, 0, Math.PI * 2)
     c.fillStyle = 'rgba(0, 255, 0, 0.15)'
     c.fill()
     c.strokeStyle = 'rgba(0, 255, 0, 0.5)'

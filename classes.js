@@ -1,5 +1,5 @@
 class Sprite {
-    constructor({ position, velocity, image, frames = { max: 1 }, sprites, name }) {
+    constructor({ position, velocity, image, frames = { max: 1 }, sprites, name, scale = 1 }) {
         this.position = position
         this.image = image
         this.frames = { ...frames, val: 0, elapsed: 0 }
@@ -15,19 +15,23 @@ class Sprite {
         this.moving = false
         this.sprites = sprites
         this.name = name
+        this.scale = scale
     }
 
     draw() {
+        const dw = this.width * this.scale
+        const dh = this.height * this.scale
+
         c.drawImage(
             this.image,
             this.frames.val * this.width,
             0,
-            this.image.width / this.frames.max,
-            this.image.height,
+            this.width,
+            this.height,
             this.position.x,
             this.position.y,
-            this.image.width / this.frames.max,
-            this.image.height,
+            dw,
+            dh,
         )
 
         // Draw name above character
@@ -36,20 +40,18 @@ class Sprite {
             const textWidth = c.measureText(this.name).width
             const padding = 4
 
-            // Background box for the name
             c.fillStyle = 'rgba(0, 0, 0, 0.5)'
             c.fillRect(
-                this.position.x + this.width / 2 - textWidth / 2 - padding,
+                this.position.x + dw / 2 - textWidth / 2 - padding,
                 this.position.y - 25,
                 textWidth + padding * 2,
                 20
             )
 
-            // Name text
             c.fillStyle = 'white'
             c.fillText(
                 this.name,
-                this.position.x + this.width / 2 - textWidth / 2,
+                this.position.x + dw / 2 - textWidth / 2,
                 this.position.y - 10
             )
         }
