@@ -36,24 +36,30 @@ class Sprite {
 
         // Draw name above character
         if (this.name) {
-            c.font = '14px Arial'
+            const fontSize = 18
+            c.font = `bold ${fontSize}px Arial`
             const textWidth = c.measureText(this.name).width
-            const padding = 4
+            const padding = 8
+            const boxH = fontSize + 8
+            const boxX = this.position.x + dw / 2 - textWidth / 2 - padding
+            const boxY = this.position.y - boxH - 10
 
-            c.fillStyle = 'rgba(0, 0, 0, 0.5)'
-            c.fillRect(
-                this.position.x + dw / 2 - textWidth / 2 - padding,
-                this.position.y - 25,
-                textWidth + padding * 2,
-                20
-            )
+            // Background pill
+            c.fillStyle = 'rgba(0, 0, 0, 0.65)'
+            c.beginPath()
+            c.roundRect(boxX, boxY, textWidth + padding * 2, boxH, 6)
+            c.fill()
 
-            c.fillStyle = 'white'
+            // White text with subtle shadow
+            c.shadowColor = 'rgba(0,0,0,0.8)'
+            c.shadowBlur = 4
+            c.fillStyle = '#ffffff'
             c.fillText(
                 this.name,
                 this.position.x + dw / 2 - textWidth / 2,
-                this.position.y - 10
+                boxY + boxH - 7
             )
+            c.shadowBlur = 0
         }
 
         if (!this.moving) return

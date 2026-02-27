@@ -1,16 +1,16 @@
 const socket = io();
 const canvas = document.querySelector('canvas');
 const c = canvas.getContext('2d')
-canvas.width = 1900
-canvas.height = 920
+canvas.width = window.innerWidth
+canvas.height = window.innerHeight
 
 const MAP_COLS = 202
 const MAP_ROWS = 144
 const TILE_SIZE = 12
 const SPRITE_SCALE = 2 // tamanho do personagem: 1 = original, 2 = dobro
 
-// Ponto de spawn seguro (tile livre no centro do escritório)
-const SPAWN_TILE = { col: 100, row: 35 }
+// Ponto de spawn: centro geométrico do mapa (garante centralização visual)
+const SPAWN_TILE = { col: 101, row: 72 }
 
 const collisionsMap = []
 for (let i = 0; i < collisions.length; i += MAP_COLS) {
@@ -718,7 +718,13 @@ function getDistance(p1, p2) {
     return Math.sqrt(dx * dx + dy * dy)
 }
 
-const GAME_SCALE = 0.55 // zoom-out: diminua para ver mais do mapa, aumente para aproximar
+// Escala dinâmica: garante que o mapa sempre preencha a tela inteira, sem bordas pretas.
+// Aumente ZOOM_FACTOR para aproximar (ver menos do mapa), diminua para afastar (ver mais).
+const ZOOM_FACTOR = 1.1
+const GAME_SCALE = Math.max(
+    canvas.width  / (MAP_COLS * TILE_SIZE),
+    canvas.height / (MAP_ROWS * TILE_SIZE)
+) * ZOOM_FACTOR
 
 function animate() {
     window.requestAnimationFrame(animate)
