@@ -710,8 +710,21 @@ function getDistance(p1, p2) {
     return Math.sqrt(dx * dx + dy * dy)
 }
 
+const GAME_SCALE = 0.55 // zoom-out: diminua para ver mais do mapa, aumente para aproximar
+
 function animate() {
     window.requestAnimationFrame(animate)
+
+    // Fundo escuro para áreas fora do mapa
+    c.fillStyle = '#2a2a2a'
+    c.fillRect(0, 0, canvas.width, canvas.height)
+
+    // Aplica zoom-out centralizado no canvas
+    c.save()
+    c.translate(canvas.width / 2, canvas.height / 2)
+    c.scale(GAME_SCALE, GAME_SCALE)
+    c.translate(-canvas.width / 2, -canvas.height / 2)
+
     background.draw()
     boundaries.forEach((boundary) => {
         boundary.draw()
@@ -796,13 +809,17 @@ function animate() {
         }
     })
 
+    foreground.draw()
+
+    // Restaura escala antes do código de movimento e UI
+    c.restore()
+
+    // Indicador de voz ativo (UI — fora da escala)
     if (Object.keys(peers).length > 0) {
         c.fillStyle = 'lime'
         c.font = '20px Arial'
         c.fillText('🎙️ Voice Chat Active', 20, 40)
     }
-
-    foreground.draw()
 
     let moving = false
     player.moving = false
