@@ -57,6 +57,16 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, '/')));
 app.use(express.json());
 
+// Collision editor save endpoint
+const fs = require('fs');
+app.post('/api/save-collisions', (req, res) => {
+    const { collisions } = req.body;
+    if (!Array.isArray(collisions)) return res.status(400).json({ error: 'Invalid data' });
+    const content = `const collisions = [${collisions.join(', ')}]`;
+    fs.writeFileSync(path.join(__dirname, 'data/collisions.js'), content);
+    res.json({ ok: true, count: collisions.length });
+});
+
 // --- Authentication Routes ---
 
 app.post('/api/auth/register', async (req, res) => {

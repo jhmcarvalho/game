@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Editor de Colisões</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #111; color: #eee; font-family: Arial, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #toolbar {
+    background: #1e1e1e;
+    border-bottom: 2px solid #333;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  #toolbar h1 { font-size: 15px; color: #00aaff; white-space: nowrap; margin-right: 4px; }
+
+  .sep { width: 1px; height: 28px; background: #444; margin: 0 4px; }
+
+  button {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    transition: opacity .15s;
+  }
+  button:hover { opacity: .85; }
+
+  #save-btn  { background: #00cc66; color: #000; }
+  #clear-btn { background: #cc3300; color: #fff; }
+  .zoom-btn  { background: #444; color: #fff; min-width: 34px; }
+
+  .tool-btn { background: #333; color: #ccc; border: 2px solid transparent; }
+  .tool-btn.active { border-color: #00aaff; color: #fff; background: #224; }
+
+  #zoom-label { font-size: 13px; color: #aaa; min-width: 50px; text-align: center; }
+  #status     { font-size: 13px; padding: 4px 10px; border-radius: 4px; background: #222; min-width: 200px; }
+  #tile-info  { font-size: 12px; color: #888; min-width: 110px; }
+
+  .legend { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #aaa; }
+  .legend-box { width: 14px; height: 14px; border-radius: 2px; }
+
+  #help { font-size: 11px; color: #666; }
+
+  #viewport {
+    flex: 1;
+    overflow: auto;
+    cursor: crosshair;
+    background: #000;
+  }
+
+  #editor-canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>🗺️ Editor de Colisões</h1>
+  <div class="sep"></div>
+
+  <button class="tool-btn active" id="tool-add" title="Clique/arraste para adicionar colisão">🧱 Adicionar</button>
+  <button class="tool-btn" id="tool-remove" title="Clique/arraste para remover colisão">🧹 Apagar</button>
+
+  <div class="sep"></div>
+
+  <button class="zoom-btn" id="zoom-out">−</button>
+  <span id="zoom-label">2×</span>
+  <button class="zoom-btn" id="zoom-in">+</button>
+
+  <div class="sep"></div>
+
+  <button class="tool-btn" id="toggle-grid">📐 Grid</button>
+
+  <div class="sep"></div>
+
+  <button id="save-btn">💾 Salvar no Jogo</button>
+  <button id="clear-btn" title="Remove TODAS as colisões (exceto bordas externas)">🗑️ Limpar Tudo</button>
+
+  <div class="sep"></div>
+
+  <span id="status">Carregando mapa...</span>
+  <span id="tile-info">Tile: —</span>
+
+  <div class="sep"></div>
+
+  <div class="legend">
+    <div class="legend-box" style="background:rgba(255,50,50,.6);border:1px solid red"></div> Colisão
+    <div class="legend-box" style="background:rgba(255,255,255,.07);border:1px solid #555;margin-left:8px"></div> Livre
+  </div>
+
+  <div class="sep"></div>
+  <span id="help">Roda do mouse: zoom &nbsp;|&nbsp; Clique direito: apagar &nbsp;|&nbsp; Arraste: pintar</span>
+</div>
+
+<div id="viewport">
+  <canvas id="editor-canvas"></canvas>
+</div>
+
+<script>
+const TILE   = 12;
+const COLS   = 202;
+const ROWS   = 144;
+
+let scale    = 2;
+let showGrid = true;
+let mode     = 'add';   // 'add' | 'remove'
+
+let collisions = new Array(COLS * ROWS).fill(0);
+let isPainting = false;
+let lastTile   = { col: -1, row: -1 };
+
+const canvas   = document.getElementById('editor-canvas');
+const ctx      = canvas.getContext('2d');
+const viewport = document.getElementById('viewport');
+
+const mapImg = new Image();
+let mapLoaded = false;
+
+// ─── Resize canvas to fit full map at current scale ─────────────────────────
+function resizeCanvas() {
+  canvas.width  = COLS * TILE * scale;
+  canvas.height = ROWS * TILE * scale;
+}
+
+// ─── Full redraw ─────────────────────────────────────────────────────────────
+function redrawAll() {
+  resizeCanvas();
+  ctx.imageSmoothingEnabled = false;
+
+  if (mapLoaded) {
+    ctx.drawImage(mapImg, 0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  const ts = TILE * scale;
+
+  // Collision overlay
+  ctx.fillStyle = 'rgba(255, 50, 50, 0.50)';
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      if (collisions[row * COLS + col] === 1025) {
+        ctx.fillRect(col * ts, row * ts, ts, ts);
+      }
+    }
+  }
+
+  // Grid
+  if (showGrid) drawGrid();
+}
+
+function drawGrid() {
+  const ts = TILE * scale;
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 0.5;
+  for (let c = 0; c <= COLS; c++) {
+    ctx.beginPath(); ctx.moveTo(c * ts, 0); ctx.lineTo(c * ts, canvas.height); ctx.stroke();
+  }
+  for (let r = 0; r <= ROWS; r++) {
+    ctx.beginPath(); ctx.moveTo(0, r * ts); ctx.lineTo(canvas.width, r * ts); ctx.stroke();
+  }
+}
+
+// ─── Paint a single tile (fast, no full redraw) ──────────────────────────────
+function paintTile(col, row, value) {
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+  if (collisions[row * COLS + col] === value) return;  // no change
+
+  collisions[row * COLS + col] = value;
+
+  const ts = TILE * scale;
+  const px = col * ts, py = row * ts;
+
+  // Repaint background slice
+  ctx.imageSmoothingEnabled = false;
+  if (mapLoaded) {
+    ctx.drawImage(mapImg, col * TILE, row * TILE, TILE, TILE, px, py, ts, ts);
+  } else {
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(px, py, ts, ts);
+  }
+
+  // Collision overlay
+  if (value === 1025) {
+    ctx.fillStyle = 'rgba(255, 50, 50, 0.50)';
+    ctx.fillRect(px, py, ts, ts);
+  }
+
+  // Grid lines for this cell
+  if (showGrid) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(px, py, ts, ts);
+  }
+}
+
+// ─── Coordinate helpers ──────────────────────────────────────────────────────
+function getTileFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const sx = (e.clientX - rect.left)  * scaleX;
+  const sy = (e.clientY - rect.top)   * scaleY;
+  return {
+    col: Math.floor(sx / (TILE * scale)),
+    row: Math.floor(sy / (TILE * scale))
+  };
+}
+
+// ─── Mouse interaction ───────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  isPainting = true;
+  const currentMode = e.button === 2 ? 'remove' : mode;
+  const { col, row } = getTileFromEvent(e);
+  lastTile = { col, row };
+  paintTile(col, row, currentMode === 'add' ? 1025 : 0);
+  document.getElementById('tile-info').textContent = `Tile: (${col}, ${row})`;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const { col, row } = getTileFromEvent(e);
+  document.getElementById('tile-info').textContent = `Tile: (${col}, ${row})`;
+
+  if (!isPainting) return;
+
+  if (col === lastTile.col && row === lastTile.row) return;
+  lastTile = { col, row };
+
+  const currentMode = (e.buttons & 2) ? 'remove' : mode;
+  paintTile(col, row, currentMode === 'add' ? 1025 : 0);
+});
+
+canvas.addEventListener('mouseup',    () => { isPainting = false; });
+canvas.addEventListener('mouseleave', () => { isPainting = false; });
+canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); });
+
+// ─── Zoom ────────────────────────────────────────────────────────────────────
+function setZoom(newScale) {
+  const vp = viewport;
+  // Preserve scroll center
+  const cx = vp.scrollLeft + vp.clientWidth  / 2;
+  const cy = vp.scrollTop  + vp.clientHeight / 2;
+  const ratio = newScale / scale;
+
+  scale = newScale;
+  document.getElementById('zoom-label').textContent = scale + '×';
+  redrawAll();
+
+  vp.scrollLeft = cx * ratio - vp.clientWidth  / 2;
+  vp.scrollTop  = cy * ratio - vp.clientHeight / 2;
+}
+
+document.getElementById('zoom-in').onclick  = () => { if (scale < 6) setZoom(scale + 1); };
+document.getElementById('zoom-out').onclick = () => { if (scale > 1) setZoom(scale - 1); };
+
+viewport.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 1 : -1;
+  const ns = Math.max(1, Math.min(6, scale + delta));
+  if (ns !== scale) setZoom(ns);
+}, { passive: false });
+
+// ─── Tool toggle ─────────────────────────────────────────────────────────────
+document.getElementById('tool-add').onclick = () => {
+  mode = 'add';
+  document.getElementById('tool-add').classList.add('active');
+  document.getElementById('tool-remove').classList.remove('active');
+  canvas.style.cursor = 'crosshair';
+};
+document.getElementById('tool-remove').onclick = () => {
+  mode = 'remove';
+  document.getElementById('tool-remove').classList.add('active');
+  document.getElementById('tool-add').classList.remove('active');
+  canvas.style.cursor = 'cell';
+};
+
+// ─── Grid toggle ─────────────────────────────────────────────────────────────
+const gridBtn = document.getElementById('toggle-grid');
+gridBtn.classList.add('active');
+gridBtn.onclick = () => {
+  showGrid = !showGrid;
+  gridBtn.classList.toggle('active', showGrid);
+  redrawAll();
+};
+
+// ─── Clear all (keep outer walls) ────────────────────────────────────────────
+document.getElementById('clear-btn').onclick = () => {
+  if (!confirm('Remover TODAS as colisões? Isso não pode ser desfeito.')) return;
+  collisions.fill(0);
+  redrawAll();
+};
+
+// ─── Save to server ───────────────────────────────────────────────────────────
+document.getElementById('save-btn').onclick = async () => {
+  const status = document.getElementById('status');
+  status.textContent = '⏳ Salvando...';
+  status.style.color = '#ffcc00';
+  try {
+    const res = await fetch('/api/save-collisions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ collisions })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      status.textContent = '✅ Salvo! Recarregue o jogo para ver.';
+      status.style.color = '#00cc66';
+    } else {
+      status.textContent = '❌ Erro ao salvar.';
+      status.style.color = '#ff4444';
+    }
+  } catch (err) {
+    status.textContent = '❌ Erro de conexão.';
+    status.style.color = '#ff4444';
+  }
+};
+
+// ─── Load collisions from server ─────────────────────────────────────────────
+async function loadCollisions() {
+  try {
+    const res  = await fetch('/data/collisions.js?t=' + Date.now());
+    const text = await res.text();
+    const match = text.match(/\[([^\]]+)\]/s);
+    if (match) {
+      const parsed = match[1].split(',').map(n => parseInt(n.trim(), 10));
+      if (parsed.length === COLS * ROWS) {
+        collisions = parsed;
+      } else {
+        console.warn('Collision count mismatch:', parsed.length, 'vs', COLS * ROWS);
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao carregar colisões:', err);
+  }
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+(async () => {
+  const status = document.getElementById('status');
+  await loadCollisions();
+
+  mapImg.onload = () => {
+    mapLoaded = true;
+    status.textContent = 'Mapa carregado — clique para editar colisões';
+    status.style.color = '#00cc66';
+    redrawAll();
+  };
+  mapImg.onerror = () => {
+    status.textContent = 'Mapa carregado (sem imagem) — clique para editar';
+    status.style.color = '#ffcc00';
+    redrawAll();
+  };
+  mapImg.src = '/img/map.png?t=' + Date.now();
+})();
+</script>
+</body>
+</html>

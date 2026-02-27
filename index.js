@@ -4,15 +4,20 @@ const c = canvas.getContext('2d')
 canvas.width = 1900
 canvas.height = 920
 
+const MAP_COLS = 202
+const MAP_ROWS = 144
+
 const collisionsMap = []
-for (let i = 0; i < collisions.length; i += 70) {
-    collisionsMap.push(collisions.slice(i, 70 + i))
+for (let i = 0; i < collisions.length; i += MAP_COLS) {
+    collisionsMap.push(collisions.slice(i, MAP_COLS + i))
 }
 
 const boundaries = []
+// Map: 202x144 tiles @ 12px = 2424x1728. Canvas: 1900x920.
+// offset centers the map on screen so player starts at center.
 const offset = {
-    x: -1263,
-    y: -480
+    x: -262,
+    y: -404
 }
 
 collisionsMap.forEach((row, i) => {
