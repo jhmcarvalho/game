@@ -1016,6 +1016,8 @@ function animate() {
     let moving = false
     player.moving = false
 
+    const speed = 10
+
     const localPos = {
         x: player.position.x - background.position.x,
         y: player.position.y - background.position.y
@@ -1035,7 +1037,7 @@ function animate() {
                         ...boundary,
                         position: {
                             x: boundary.position.x,
-                            y: boundary.position.y + 5
+                            y: boundary.position.y + speed
                         }
                     }
                 })
@@ -1046,10 +1048,10 @@ function animate() {
         }
         if (player.moving) {
             movables.forEach((movable) => {
-                movable.position.y += 5
+                movable.position.y += speed
             })
             Object.values(remotePlayers).forEach(rp => {
-                rp.position.y += 5
+                rp.position.y += speed
             })
             moving = true
         }
@@ -1063,7 +1065,7 @@ function animate() {
                     rectangle1: player,
                     rectangle2: {
                         ...boundary, position: {
-                            x: boundary.position.x + 5,
+                            x: boundary.position.x + speed,
                             y: boundary.position.y
                         }
                     }
@@ -1075,10 +1077,10 @@ function animate() {
         }
         if (player.moving) {
             movables.forEach((movable) => {
-                movable.position.x += 5
+                movable.position.x += speed
             })
             Object.values(remotePlayers).forEach(rp => {
-                rp.position.x += 5
+                rp.position.x += speed
             })
             moving = true
         }
@@ -1093,7 +1095,7 @@ function animate() {
                     rectangle2: {
                         ...boundary, position: {
                             x: boundary.position.x,
-                            y: boundary.position.y - 5
+                            y: boundary.position.y - speed
                         }
                     }
                 })
@@ -1104,10 +1106,10 @@ function animate() {
         }
         if (player.moving) {
             movables.forEach((movable) => {
-                movable.position.y -= 5
+                movable.position.y -= speed
             })
             Object.values(remotePlayers).forEach(rp => {
-                rp.position.y -= 5
+                rp.position.y -= speed
             })
             moving = true
         }
@@ -1121,7 +1123,7 @@ function animate() {
                     rectangle1: player,
                     rectangle2: {
                         ...boundary, position: {
-                            x: boundary.position.x - 5,
+                            x: boundary.position.x - speed,
                             y: boundary.position.y
                         }
                     }
@@ -1133,10 +1135,10 @@ function animate() {
         }
         if (player.moving) {
             movables.forEach((movable) => {
-                movable.position.x -= 5
+                movable.position.x -= speed
             })
             Object.values(remotePlayers).forEach(rp => {
-                rp.position.x -= 5
+                rp.position.x -= speed
             })
             moving = true
         }
