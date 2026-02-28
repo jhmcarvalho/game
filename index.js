@@ -372,6 +372,17 @@ async function handleLogin() {
 document.getElementById('register-btn').onclick = handleRegister;
 document.getElementById('login-btn').onclick = handleLogin;
 
+// Enter no formulário de login e cadastro
+document.getElementById('login-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleLogin()
+})
+document.getElementById('login-email').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('login-password').focus()
+})
+document.getElementById('reg-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleRegister()
+})
+
 document.querySelectorAll('.char-card').forEach(card => {
     card.onclick = () => {
         if (card.style.opacity === '0.5') return; // Ignore "Coming soon" cards
