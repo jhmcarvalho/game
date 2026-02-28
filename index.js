@@ -33,8 +33,8 @@ async function loadClaims() {
         allClaims = await res.json()
         if (currentUser && allClaims[currentUser.id]) {
             myClaim = allClaims[currentUser.id]
-            document.getElementById('my-desk-btn').style.display     = 'inline-block'
-            document.getElementById('unclaim-desk-btn').style.display = 'inline-block'
+            document.getElementById('my-desk-btn').style.display          = 'inline-block'
+            document.getElementById('unclaim-desk-section').style.display = 'block'
         }
     } catch(e) {}
 }
@@ -422,11 +422,13 @@ document.getElementById('claim-desk-btn').addEventListener('click', async () => 
         if (data.ok) {
             myClaim = data.claim
             allClaims[currentUser.id] = myClaim
-            document.getElementById('my-desk-btn').style.display      = 'inline-block'
-            document.getElementById('unclaim-desk-btn').style.display  = 'inline-block'
-            document.getElementById('claim-desk-btn').style.display    = 'none'
+            document.getElementById('my-desk-btn').style.display          = 'inline-block'
+            document.getElementById('unclaim-desk-section').style.display = 'block'
+            document.getElementById('claim-desk-btn').style.display       = 'none'
+        } else {
+            showToast(data.error || 'Não foi possível reivindicar esta mesa.')
         }
-    } catch(e) {}
+    } catch(e) { showToast('Erro ao reivindicar mesa.') }
 })
 
 // ── Botão: Abandonar mesa ────────────────────────────────────────────────────
@@ -436,8 +438,8 @@ document.getElementById('unclaim-desk-btn').addEventListener('click', async () =
         await fetch('/api/claim-desk', { method: 'DELETE', headers: { 'Authorization': `Bearer ${authToken}` } })
         myClaim = null
         delete allClaims[currentUser.id]
-        document.getElementById('my-desk-btn').style.display      = 'none'
-        document.getElementById('unclaim-desk-btn').style.display  = 'none'
+        document.getElementById('my-desk-btn').style.display          = 'none'
+        document.getElementById('unclaim-desk-section').style.display = 'none'
     } catch(e) {}
 })
 
@@ -793,6 +795,26 @@ function getDistance(p1, p2) {
     return Math.sqrt(dx * dx + dy * dy)
 }
 
+function showToast(msg, duration = 3000) {
+    let toast = document.getElementById('game-toast')
+    if (!toast) {
+        toast = document.createElement('div')
+        toast.id = 'game-toast'
+        Object.assign(toast.style, {
+            position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)',
+            background: 'rgba(30,30,30,0.92)', color: '#fff', padding: '10px 22px',
+            borderRadius: '8px', fontSize: '14px', zIndex: '999', pointerEvents: 'none',
+            border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(6px)',
+            transition: 'opacity 0.3s'
+        })
+        document.body.appendChild(toast)
+    }
+    toast.textContent = msg
+    toast.style.opacity = '1'
+    clearTimeout(toast._timeout)
+    toast._timeout = setTimeout(() => { toast.style.opacity = '0' }, duration)
+}
+
 // Escala dinâmica: garante que o mapa sempre preencha a tela inteira, sem bordas pretas.
 // Aumente ZOOM_FACTOR para aproximar (ver menos do mapa), diminua para afastar (ver mais).
 const ZOOM_FACTOR = 1.1
@@ -822,12 +844,26 @@ function animate() {
     const visTileR1 = Math.max(0, Math.floor(-background.position.y / TILE_SIZE))
     const visTileR2 = Math.min(MAP_ROWS, Math.ceil((canvas.height - background.position.y) / TILE_SIZE))
 
-    c.fillStyle = 'rgba(255, 190, 0, 0.22)'
+    // Cores por estado: livre=âmbar, minha=verde, ocupada=vermelho
     for (let r = visTileR1; r < visTileR2; r++) {
         for (let col = visTileC1; col < visTileC2; col++) {
-            if (zonesMap[r] && zonesMap[r][col] === 1) {
-                c.fillRect(col * TILE_SIZE + background.position.x, r * TILE_SIZE + background.position.y, TILE_SIZE, TILE_SIZE)
+            if (!(zonesMap[r] && zonesMap[r][col] === 1)) continue
+            const tileWx = col * TILE_SIZE
+            const tileWy = r   * TILE_SIZE
+            let color = 'rgba(255, 190, 0, 0.22)' // livre – âmbar
+            const claimEntries = Object.values(allClaims)
+            for (let ci = 0; ci < claimEntries.length; ci++) {
+                const claim = claimEntries[ci]
+                const dx = claim.x - tileWx, dy = claim.y - tileWy
+                if (Math.sqrt(dx*dx + dy*dy) < TILE_SIZE * 10) {
+                    color = (currentUser && claim.userId === currentUser.id)
+                        ? 'rgba(0, 220, 100, 0.28)'   // minha – verde
+                        : 'rgba(220, 60, 60, 0.30)'   // ocupada – vermelho
+                    break
+                }
             }
+            c.fillStyle = color
+            c.fillRect(tileWx + background.position.x, tileWy + background.position.y, TILE_SIZE, TILE_SIZE)
         }
     }
 
@@ -940,18 +976,31 @@ function animate() {
         const ptc = Math.floor(pwx / TILE_SIZE)
         const ptr = Math.floor(pwy / TILE_SIZE)
         const radius = 4
-        let nearZone = false
+        let nearZoneTile = null
         outer:
         for (let dr = -radius; dr <= radius; dr++) {
             for (let dc = -radius; dc <= radius; dc++) {
                 const rr = ptr + dr, cc = ptc + dc
                 if (rr >= 0 && rr < MAP_ROWS && cc >= 0 && cc < MAP_COLS && zonesMap[rr] && zonesMap[rr][cc] === 1) {
-                    nearZone = true; break outer
+                    nearZoneTile = { col: cc, row: rr }; break outer
                 }
             }
         }
+
+        // Verifica se a mesa próxima já está ocupada por outro jogador
+        let deskOccupied = false
+        if (nearZoneTile) {
+            const tileWx = nearZoneTile.col * TILE_SIZE
+            const tileWy = nearZoneTile.row * TILE_SIZE
+            deskOccupied = Object.values(allClaims).some(claim => {
+                if (currentUser && claim.userId === currentUser.id) return false
+                const dx = claim.x - tileWx, dy = claim.y - tileWy
+                return Math.sqrt(dx*dx + dy*dy) < TILE_SIZE * 10
+            })
+        }
+
         const claimBtn = document.getElementById('claim-desk-btn')
-        claimBtn.style.display = (nearZone && !myClaim) ? 'inline-block' : 'none'
+        claimBtn.style.display = (nearZoneTile && !myClaim && !deskOccupied) ? 'inline-block' : 'none'
     }
 
     // Restaura escala antes do código de movimento e UI

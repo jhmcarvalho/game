@@ -83,6 +83,63 @@ const readClaims = () => {
     } catch { return {}; }
 };
 
+// BFS helpers para identificar a qual mesa (componente conectado) pertence uma posição
+const DESK_COLS = 202, DESK_ROWS = 144, DESK_TILE = 12;
+
+function loadZonesArray() {
+    try {
+        const text = fs.readFileSync(path.join(__dirname, 'data/zones.js'), 'utf8');
+        const m = text.match(/\[([^\]]+)\]/s);
+        if (!m) return null;
+        return m[1].split(',').map(n => parseInt(n.trim(), 10));
+    } catch { return null; }
+}
+
+// Retorna o ID canônico (menor índice) do componente conectado que contém o tile (col, row).
+// Retorna null se o tile não for zona.
+function getDeskId(zonesArr, startCol, startRow) {
+    const startIdx = startRow * DESK_COLS + startCol;
+    if (!zonesArr || zonesArr[startIdx] !== 1) return null;
+    const visited = new Set();
+    const queue = [[startCol, startRow]];
+    let minIdx = startIdx;
+    while (queue.length) {
+        const [c, r] = queue.shift();
+        const idx = r * DESK_COLS + c;
+        if (visited.has(idx)) continue;
+        visited.add(idx);
+        if (idx < minIdx) minIdx = idx;
+        for (const [dc, dr] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+            const nc = c + dc, nr = r + dr;
+            if (nc >= 0 && nc < DESK_COLS && nr >= 0 && nr < DESK_ROWS) {
+                const ni = nr * DESK_COLS + nc;
+                if (!visited.has(ni) && zonesArr[ni] === 1) queue.push([nc, nr]);
+            }
+        }
+    }
+    return minIdx;
+}
+
+// Encontra a mesa mais próxima de um ponto (px, py) num raio de até 5 tiles
+function findNearestDeskId(zonesArr, px, py) {
+    if (!zonesArr) return null;
+    const baseCol = Math.floor(px / DESK_TILE);
+    const baseRow = Math.floor(py / DESK_TILE);
+    for (let radius = 0; radius <= 5; radius++) {
+        for (let dr = -radius; dr <= radius; dr++) {
+            for (let dc = -radius; dc <= radius; dc++) {
+                if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue; // borda do quadrado
+                const c = baseCol + dc, r = baseRow + dr;
+                if (c >= 0 && c < DESK_COLS && r >= 0 && r < DESK_ROWS) {
+                    const id = getDeskId(zonesArr, c, r);
+                    if (id !== null) return id;
+                }
+            }
+        }
+    }
+    return null;
+}
+
 app.get('/api/claims', (req, res) => {
     res.json(readClaims());
 });
@@ -93,11 +150,30 @@ app.post('/api/claim-desk', async (req, res) => {
         if (!token) return res.status(401).json({ error: 'Não autorizado' });
         const decoded = jwt.verify(token, JWT_SECRET);
         const { x, y } = req.body;
-        const user = await prisma.user.findUnique({ where: { id: decoded.userId }, include: { profile: true } });
+
+        const zonesArr = loadZonesArray();
+        const deskId   = findNearestDeskId(zonesArr, x, y);
+
         const claims = readClaims();
-        claims[decoded.userId] = { x, y, name: user?.profile?.name || 'Desconhecido', userId: decoded.userId };
+
+        // Verifica se outro jogador já reivindicou esta mesa
+        if (deskId !== null) {
+            const conflict = Object.entries(claims).find(
+                ([uid, claim]) => uid !== String(decoded.userId) && claim.deskId === deskId
+            );
+            if (conflict) {
+                return res.status(409).json({ error: 'Esta mesa já foi reivindicada por outro jogador.' });
+            }
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: decoded.userId }, include: { profile: true } });
+        claims[decoded.userId] = {
+            x, y,
+            name: user?.profile?.name || 'Desconhecido',
+            userId: decoded.userId,
+            deskId: deskId ?? null
+        };
         fs.writeFileSync(claimsPath(), JSON.stringify(claims, null, 2));
-        // Broadcast updated claims to all clients
         io.emit('claimsUpdated', claims);
         res.json({ ok: true, claim: claims[decoded.userId] });
     } catch(e) {
