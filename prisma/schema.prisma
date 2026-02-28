@@ -21,12 +21,24 @@ model User {
 }
 
 model Profile {
-  id            Int      @id @default(autoincrement())
-  userId        Int      @unique
-  user          User     @relation(fields: [userId], references: [id])
+  id            Int        @id @default(autoincrement())
+  userId        Int        @unique
+  user          User       @relation(fields: [userId], references: [id])
   name          String
-  sprite        String   @default("playerDown")
-  customization Json?    @default("{}")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  sprite        String     @default("playerDown")
+  customization Json?      @default("{}")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deskClaim     DeskClaim?
+}
+
+model DeskClaim {
+  id        Int      @id @default(autoincrement())
+  profileId Int      @unique
+  profile   Profile  @relation(fields: [profileId], references: [id])
+  x         Float
+  y         Float
+  deskId    Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

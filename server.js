@@ -74,16 +74,8 @@ app.post('/api/save-zones', (req, res) => {
     res.json({ ok: true, count: zones.length });
 });
 
-// Desk claims
-const claimsPath = () => path.join(__dirname, 'data/claims.json');
-const readClaims = () => {
-    try {
-        if (!fs.existsSync(claimsPath())) fs.writeFileSync(claimsPath(), '{}');
-        return JSON.parse(fs.readFileSync(claimsPath(), 'utf8'));
-    } catch { return {}; }
-};
+// ── Desk claims (persistidos no banco de dados) ───────────────────────────────
 
-// BFS helpers para identificar a qual mesa (componente conectado) pertence uma posição
 const DESK_COLS = 202, DESK_ROWS = 144, DESK_TILE = 12;
 
 function loadZonesArray() {
@@ -95,8 +87,6 @@ function loadZonesArray() {
     } catch { return null; }
 }
 
-// Retorna o ID canônico (menor índice) do componente conectado que contém o tile (col, row).
-// Retorna null se o tile não for zona.
 function getDeskId(zonesArr, startCol, startRow) {
     const startIdx = startRow * DESK_COLS + startCol;
     if (!zonesArr || zonesArr[startIdx] !== 1) return null;
@@ -120,7 +110,6 @@ function getDeskId(zonesArr, startCol, startRow) {
     return minIdx;
 }
 
-// Encontra a mesa mais próxima de um ponto (px, py) num raio de até 5 tiles
 function findNearestDeskId(zonesArr, px, py) {
     if (!zonesArr) return null;
     const baseCol = Math.floor(px / DESK_TILE);
@@ -128,7 +117,7 @@ function findNearestDeskId(zonesArr, px, py) {
     for (let radius = 0; radius <= 5; radius++) {
         for (let dr = -radius; dr <= radius; dr++) {
             for (let dc = -radius; dc <= radius; dc++) {
-                if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue; // borda do quadrado
+                if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue;
                 const c = baseCol + dc, r = baseRow + dr;
                 if (c >= 0 && c < DESK_COLS && r >= 0 && r < DESK_ROWS) {
                     const id = getDeskId(zonesArr, c, r);
@@ -140,8 +129,32 @@ function findNearestDeskId(zonesArr, px, py) {
     return null;
 }
 
-app.get('/api/claims', (req, res) => {
-    res.json(readClaims());
+// Converte registros do banco para o formato { [userId]: { x, y, name, userId, deskId } }
+function claimsToMap(dbClaims) {
+    const map = {};
+    for (const dc of dbClaims) {
+        map[dc.profile.userId] = {
+            x: dc.x,
+            y: dc.y,
+            name: dc.profile.name,
+            userId: dc.profile.userId,
+            deskId: dc.deskId
+        };
+    }
+    return map;
+}
+
+async function getAllClaims() {
+    const rows = await prisma.deskClaim.findMany({ include: { profile: true } });
+    return claimsToMap(rows);
+}
+
+app.get('/api/claims', async (req, res) => {
+    try {
+        res.json(await getAllClaims());
+    } catch(e) {
+        res.json({});
+    }
 });
 
 app.post('/api/claim-desk', async (req, res) => {
@@ -154,41 +167,47 @@ app.post('/api/claim-desk', async (req, res) => {
         const zonesArr = loadZonesArray();
         const deskId   = findNearestDeskId(zonesArr, x, y);
 
-        const claims = readClaims();
-
-        // Verifica se outro jogador já reivindicou esta mesa
+        // Verifica conflito com outro jogador
         if (deskId !== null) {
-            const conflict = Object.entries(claims).find(
-                ([uid, claim]) => uid !== String(decoded.userId) && claim.deskId === deskId
-            );
+            const conflict = await prisma.deskClaim.findFirst({
+                where: { deskId, profile: { userId: { not: decoded.userId } } },
+                include: { profile: true }
+            });
             if (conflict) {
                 return res.status(409).json({ error: 'Esta mesa já foi reivindicada por outro jogador.' });
             }
         }
 
-        const user = await prisma.user.findUnique({ where: { id: decoded.userId }, include: { profile: true } });
-        claims[decoded.userId] = {
-            x, y,
-            name: user?.profile?.name || 'Desconhecido',
-            userId: decoded.userId,
-            deskId: deskId ?? null
-        };
-        fs.writeFileSync(claimsPath(), JSON.stringify(claims, null, 2));
+        const profile = await prisma.profile.findUnique({ where: { userId: decoded.userId } });
+        if (!profile) return res.status(404).json({ error: 'Perfil não encontrado' });
+
+        await prisma.deskClaim.upsert({
+            where:  { profileId: profile.id },
+            update: { x, y, deskId: deskId ?? null },
+            create: { profileId: profile.id, x, y, deskId: deskId ?? null }
+        });
+
+        const claims = await getAllClaims();
         io.emit('claimsUpdated', claims);
         res.json({ ok: true, claim: claims[decoded.userId] });
     } catch(e) {
-        res.status(401).json({ error: 'Token inválido' });
+        console.error('claim-desk error:', e);
+        res.status(401).json({ error: 'Token inválido ou erro interno' });
     }
 });
 
-app.delete('/api/claim-desk', (req, res) => {
+app.delete('/api/claim-desk', async (req, res) => {
     try {
         const token = req.headers.authorization?.split(' ')[1];
         if (!token) return res.status(401).json({ error: 'Não autorizado' });
         const decoded = jwt.verify(token, JWT_SECRET);
-        const claims = readClaims();
-        delete claims[decoded.userId];
-        fs.writeFileSync(claimsPath(), JSON.stringify(claims, null, 2));
+
+        const profile = await prisma.profile.findUnique({ where: { userId: decoded.userId } });
+        if (profile) {
+            await prisma.deskClaim.deleteMany({ where: { profileId: profile.id } });
+        }
+
+        const claims = await getAllClaims();
         io.emit('claimsUpdated', claims);
         res.json({ ok: true });
     } catch(e) {
