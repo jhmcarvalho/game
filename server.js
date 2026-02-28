@@ -323,7 +323,7 @@ io.on('connection', (socket) => {
             const messageData = {
                 name: players[socket.id].name,
                 message: data.message,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
             };
             io.emit('chatMessage', messageData);
         }
