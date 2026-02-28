@@ -546,6 +546,9 @@
     <button id="toggle-screen" class="control-btn">🖥️ Share Screen</button>
     <button id="watch-screen" class="control-btn" style="display: none;">📺 Watch Screen</button>
     <button id="toggle-custom" class="control-btn">✨ Personalizações</button>
+    <button id="claim-desk-btn" class="control-btn" style="display:none; background:rgba(255,190,0,0.4);">🪑 Reivindicar Mesa</button>
+    <button id="unclaim-desk-btn" class="control-btn" style="display:none; background:rgba(255,100,0,0.4);">❌ Abandonar Mesa</button>
+    <button id="my-desk-btn" class="control-btn" style="display:none; background:rgba(0,200,100,0.4);">✈️ Minha Mesa</button>
     <button id="logout-btn" class="control-btn logout-btn">🚪 Sair</button>
 </div>
 
@@ -580,5 +583,6 @@
 <canvas></canvas>
 <script src="/socket.io/socket.io.js"></script>
 <script src="data/collisions.js"></script>
+<script src="data/zones.js"></script>
 <script src="classes.js"></script>
 <script src="index.js"></script>

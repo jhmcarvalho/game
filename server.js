@@ -57,14 +57,67 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, '/')));
 app.use(express.json());
 
-// Collision editor save endpoint
+// Editor endpoints
 const fs = require('fs');
+
 app.post('/api/save-collisions', (req, res) => {
     const { collisions } = req.body;
     if (!Array.isArray(collisions)) return res.status(400).json({ error: 'Invalid data' });
-    const content = `const collisions = [${collisions.join(', ')}]`;
-    fs.writeFileSync(path.join(__dirname, 'data/collisions.js'), content);
+    fs.writeFileSync(path.join(__dirname, 'data/collisions.js'), `const collisions = [${collisions.join(', ')}]`);
     res.json({ ok: true, count: collisions.length });
+});
+
+app.post('/api/save-zones', (req, res) => {
+    const { zones } = req.body;
+    if (!Array.isArray(zones)) return res.status(400).json({ error: 'Invalid data' });
+    fs.writeFileSync(path.join(__dirname, 'data/zones.js'), `const zones = [${zones.join(', ')}]`);
+    res.json({ ok: true, count: zones.length });
+});
+
+// Desk claims
+const claimsPath = () => path.join(__dirname, 'data/claims.json');
+const readClaims = () => {
+    try {
+        if (!fs.existsSync(claimsPath())) fs.writeFileSync(claimsPath(), '{}');
+        return JSON.parse(fs.readFileSync(claimsPath(), 'utf8'));
+    } catch { return {}; }
+};
+
+app.get('/api/claims', (req, res) => {
+    res.json(readClaims());
+});
+
+app.post('/api/claim-desk', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) return res.status(401).json({ error: 'Não autorizado' });
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const { x, y } = req.body;
+        const user = await prisma.user.findUnique({ where: { id: decoded.userId }, include: { profile: true } });
+        const claims = readClaims();
+        claims[decoded.userId] = { x, y, name: user?.profile?.name || 'Desconhecido', userId: decoded.userId };
+        fs.writeFileSync(claimsPath(), JSON.stringify(claims, null, 2));
+        // Broadcast updated claims to all clients
+        io.emit('claimsUpdated', claims);
+        res.json({ ok: true, claim: claims[decoded.userId] });
+    } catch(e) {
+        res.status(401).json({ error: 'Token inválido' });
+    }
+});
+
+app.delete('/api/claim-desk', (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) return res.status(401).json({ error: 'Não autorizado' });
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const claims = readClaims();
+        delete claims[decoded.userId];
+        fs.writeFileSync(claimsPath(), JSON.stringify(claims, null, 2));
+        io.emit('claimsUpdated', claims);
+        res.json({ ok: true });
+    } catch(e) {
+        res.status(401).json({ error: 'Token inválido' });
+    }
 });
 
 // --- Authentication Routes ---

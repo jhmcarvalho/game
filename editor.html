@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Editor de Colisões</title>
+<title>Editor de Mapa</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #111; color: #eee; font-family: Arial, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -13,94 +13,100 @@
     padding: 8px 12px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-shrink: 0;
     flex-wrap: wrap;
   }
 
-  #toolbar h1 { font-size: 15px; color: #00aaff; white-space: nowrap; margin-right: 4px; }
-
-  .sep { width: 1px; height: 28px; background: #444; margin: 0 4px; }
+  #toolbar h1 { font-size: 14px; color: #00aaff; white-space: nowrap; }
+  .sep { width: 1px; height: 28px; background: #444; margin: 0 2px; }
 
   button {
-    padding: 6px 14px;
+    padding: 6px 12px;
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: bold;
     transition: opacity .15s;
+    white-space: nowrap;
   }
   button:hover { opacity: .85; }
 
-  #save-btn  { background: #00cc66; color: #000; }
-  #clear-btn { background: #cc3300; color: #fff; }
-  .zoom-btn  { background: #444; color: #fff; min-width: 34px; }
+  .tool-btn { background: #333; color: #aaa; border: 2px solid transparent; }
+  .tool-btn.active { border-color: #00aaff; color: #fff; background: #1a2a4a; }
 
-  .tool-btn { background: #333; color: #ccc; border: 2px solid transparent; }
-  .tool-btn.active { border-color: #00aaff; color: #fff; background: #224; }
+  .tool-btn.desk-btn { background: #332200; color: #ffcc00; }
+  .tool-btn.desk-btn.active { border-color: #ffcc00; background: #3a2a00; color: #ffe066; }
 
-  #zoom-label { font-size: 13px; color: #aaa; min-width: 50px; text-align: center; }
-  #status     { font-size: 13px; padding: 4px 10px; border-radius: 4px; background: #222; min-width: 200px; }
-  #tile-info  { font-size: 12px; color: #888; min-width: 110px; }
+  .zoom-btn { background: #444; color: #fff; min-width: 30px; padding: 6px 10px; }
 
-  .legend { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #aaa; }
-  .legend-box { width: 14px; height: 14px; border-radius: 2px; }
+  #save-coll-btn { background: #cc3300; color: #fff; }
+  #save-zones-btn { background: #cc8800; color: #fff; }
+  #clear-coll-btn { background: #550000; color: #fff; }
+  #clear-zones-btn { background: #554400; color: #fff; }
 
-  #help { font-size: 11px; color: #666; }
+  #zoom-label { font-size: 12px; color: #aaa; min-width: 36px; text-align: center; }
+  #status { font-size: 12px; padding: 4px 10px; border-radius: 4px; background: #222; min-width: 180px; }
+  #tile-info { font-size: 11px; color: #888; min-width: 110px; }
 
-  #viewport {
-    flex: 1;
-    overflow: auto;
-    cursor: crosshair;
-    background: #000;
-  }
+  .legend { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #aaa; }
+  .legend-box { width: 12px; height: 12px; border-radius: 2px; }
 
-  #editor-canvas {
-    display: block;
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-  }
+  #layer-label { font-size: 12px; color: #888; }
+
+  #viewport { flex: 1; overflow: auto; cursor: crosshair; background: #000; }
+  #editor-canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 </style>
 </head>
 <body>
 
 <div id="toolbar">
-  <h1>🗺️ Editor de Colisões</h1>
+  <h1>🗺️ Editor de Mapa</h1>
   <div class="sep"></div>
 
-  <button class="tool-btn active" id="tool-add" title="Clique/arraste para adicionar colisão">🧱 Adicionar</button>
-  <button class="tool-btn" id="tool-remove" title="Clique/arraste para remover colisão">🧹 Apagar</button>
+  <!-- Layer tabs -->
+  <span id="layer-label">Camada:</span>
+  <button class="tool-btn active" id="layer-coll-btn" title="Editar colisões">🧱 Colisões</button>
+  <button class="tool-btn desk-btn" id="layer-zone-btn" title="Marcar áreas de mesa">🪑 Mesas</button>
 
   <div class="sep"></div>
 
+  <!-- Paint mode -->
+  <button class="tool-btn active" id="tool-add">✏️ Pintar</button>
+  <button class="tool-btn" id="tool-remove">🧹 Apagar</button>
+
+  <div class="sep"></div>
+
+  <!-- Zoom -->
   <button class="zoom-btn" id="zoom-out">−</button>
   <span id="zoom-label">2×</span>
   <button class="zoom-btn" id="zoom-in">+</button>
 
   <div class="sep"></div>
-
   <button class="tool-btn" id="toggle-grid">📐 Grid</button>
 
   <div class="sep"></div>
 
-  <button id="save-btn">💾 Salvar no Jogo</button>
-  <button id="clear-btn" title="Remove TODAS as colisões (exceto bordas externas)">🗑️ Limpar Tudo</button>
+  <button id="save-coll-btn">💾 Salvar Colisões</button>
+  <button id="save-zones-btn">💾 Salvar Mesas</button>
 
   <div class="sep"></div>
 
-  <span id="status">Carregando mapa...</span>
+  <button id="clear-coll-btn" title="Remove todas as colisões">🗑️ Limpar Col.</button>
+  <button id="clear-zones-btn" title="Remove todas as marcações de mesa">🗑️ Limpar Mesas</button>
+
+  <div class="sep"></div>
+
+  <span id="status">Carregando...</span>
   <span id="tile-info">Tile: —</span>
 
   <div class="sep"></div>
-
   <div class="legend">
     <div class="legend-box" style="background:rgba(255,50,50,.6);border:1px solid red"></div> Colisão
-    <div class="legend-box" style="background:rgba(255,255,255,.07);border:1px solid #555;margin-left:8px"></div> Livre
+    <div class="legend-box" style="background:rgba(255,190,0,.55);border:1px solid orange; margin-left:8px"></div> Mesa
   </div>
-
-  <div class="sep"></div>
-  <span id="help">Roda do mouse: zoom &nbsp;|&nbsp; Clique direito: apagar &nbsp;|&nbsp; Arraste: pintar</span>
+  <span style="font-size:11px;color:#555">| Botão direito: apagar | Scroll: zoom</span>
 </div>
 
 <div id="viewport">
@@ -114,26 +120,26 @@ const ROWS   = 144;
 
 let scale    = 2;
 let showGrid = true;
-let mode     = 'add';   // 'add' | 'remove'
+let mode     = 'add';    // 'add' | 'remove'
+let layer    = 'collision'; // 'collision' | 'zone'
 
 let collisions = new Array(COLS * ROWS).fill(0);
+let zones      = new Array(COLS * ROWS).fill(0);
 let isPainting = false;
 let lastTile   = { col: -1, row: -1 };
 
 const canvas   = document.getElementById('editor-canvas');
 const ctx      = canvas.getContext('2d');
 const viewport = document.getElementById('viewport');
+const mapImg   = new Image();
+let mapLoaded  = false;
 
-const mapImg = new Image();
-let mapLoaded = false;
-
-// ─── Resize canvas to fit full map at current scale ─────────────────────────
+// ─── Drawing ─────────────────────────────────────────────────────────────────
 function resizeCanvas() {
   canvas.width  = COLS * TILE * scale;
   canvas.height = ROWS * TILE * scale;
 }
 
-// ─── Full redraw ─────────────────────────────────────────────────────────────
 function redrawAll() {
   resizeCanvas();
   ctx.imageSmoothingEnabled = false;
@@ -147,23 +153,26 @@ function redrawAll() {
 
   const ts = TILE * scale;
 
-  // Collision overlay
-  ctx.fillStyle = 'rgba(255, 50, 50, 0.50)';
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
-      if (collisions[row * COLS + col] === 1025) {
+  // Zone overlay (amber)
+  ctx.fillStyle = 'rgba(255, 190, 0, 0.45)';
+  for (let row = 0; row < ROWS; row++)
+    for (let col = 0; col < COLS; col++)
+      if (zones[row * COLS + col] === 1)
         ctx.fillRect(col * ts, row * ts, ts, ts);
-      }
-    }
-  }
 
-  // Grid
+  // Collision overlay (red)
+  ctx.fillStyle = 'rgba(255, 50, 50, 0.50)';
+  for (let row = 0; row < ROWS; row++)
+    for (let col = 0; col < COLS; col++)
+      if (collisions[row * COLS + col] === 1025)
+        ctx.fillRect(col * ts, row * ts, ts, ts);
+
   if (showGrid) drawGrid();
 }
 
 function drawGrid() {
   const ts = TILE * scale;
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
   ctx.lineWidth = 0.5;
   for (let c = 0; c <= COLS; c++) {
     ctx.beginPath(); ctx.moveTo(c * ts, 0); ctx.lineTo(c * ts, canvas.height); ctx.stroke();
@@ -173,17 +182,10 @@ function drawGrid() {
   }
 }
 
-// ─── Paint a single tile (fast, no full redraw) ──────────────────────────────
-function paintTile(col, row, value) {
-  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
-  if (collisions[row * COLS + col] === value) return;  // no change
-
-  collisions[row * COLS + col] = value;
-
+function repaintTile(col, row) {
   const ts = TILE * scale;
   const px = col * ts, py = row * ts;
 
-  // Repaint background slice
   ctx.imageSmoothingEnabled = false;
   if (mapLoaded) {
     ctx.drawImage(mapImg, col * TILE, row * TILE, TILE, TILE, px, py, ts, ts);
@@ -192,102 +194,118 @@ function paintTile(col, row, value) {
     ctx.fillRect(px, py, ts, ts);
   }
 
-  // Collision overlay
-  if (value === 1025) {
+  // Zone first, then collision on top
+  if (zones[row * COLS + col] === 1) {
+    ctx.fillStyle = 'rgba(255, 190, 0, 0.45)';
+    ctx.fillRect(px, py, ts, ts);
+  }
+  if (collisions[row * COLS + col] === 1025) {
     ctx.fillStyle = 'rgba(255, 50, 50, 0.50)';
     ctx.fillRect(px, py, ts, ts);
   }
 
-  // Grid lines for this cell
   if (showGrid) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
     ctx.lineWidth = 0.5;
     ctx.strokeRect(px, py, ts, ts);
   }
 }
 
-// ─── Coordinate helpers ──────────────────────────────────────────────────────
-function getTileFromEvent(e) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width  / rect.width;
-  const scaleY = canvas.height / rect.height;
-  const sx = (e.clientX - rect.left)  * scaleX;
-  const sy = (e.clientY - rect.top)   * scaleY;
-  return {
-    col: Math.floor(sx / (TILE * scale)),
-    row: Math.floor(sy / (TILE * scale))
-  };
+// ─── Painting ────────────────────────────────────────────────────────────────
+function paintTile(col, row, painting) {
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+  const idx = row * COLS + col;
+
+  if (layer === 'collision') {
+    const val = painting === 'add' ? 1025 : 0;
+    if (collisions[idx] === val) return;
+    collisions[idx] = val;
+  } else {
+    const val = painting === 'add' ? 1 : 0;
+    if (zones[idx] === val) return;
+    zones[idx] = val;
+  }
+  repaintTile(col, row);
 }
 
-// ─── Mouse interaction ───────────────────────────────────────────────────────
+function getTileFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = (e.clientX - rect.left)  * (canvas.width  / rect.width);
+  const sy = (e.clientY - rect.top)   * (canvas.height / rect.height);
+  return { col: Math.floor(sx / (TILE * scale)), row: Math.floor(sy / (TILE * scale)) };
+}
+
 canvas.addEventListener('mousedown', (e) => {
   e.preventDefault();
   isPainting = true;
-  const currentMode = e.button === 2 ? 'remove' : mode;
+  const painting = e.button === 2 ? 'remove' : mode;
   const { col, row } = getTileFromEvent(e);
   lastTile = { col, row };
-  paintTile(col, row, currentMode === 'add' ? 1025 : 0);
+  paintTile(col, row, painting);
   document.getElementById('tile-info').textContent = `Tile: (${col}, ${row})`;
 });
 
 canvas.addEventListener('mousemove', (e) => {
   const { col, row } = getTileFromEvent(e);
   document.getElementById('tile-info').textContent = `Tile: (${col}, ${row})`;
-
   if (!isPainting) return;
-
   if (col === lastTile.col && row === lastTile.row) return;
   lastTile = { col, row };
-
-  const currentMode = (e.buttons & 2) ? 'remove' : mode;
-  paintTile(col, row, currentMode === 'add' ? 1025 : 0);
+  const painting = (e.buttons & 2) ? 'remove' : mode;
+  paintTile(col, row, painting);
 });
 
 canvas.addEventListener('mouseup',    () => { isPainting = false; });
 canvas.addEventListener('mouseleave', () => { isPainting = false; });
-canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // ─── Zoom ────────────────────────────────────────────────────────────────────
-function setZoom(newScale) {
+function setZoom(ns) {
   const vp = viewport;
-  // Preserve scroll center
   const cx = vp.scrollLeft + vp.clientWidth  / 2;
   const cy = vp.scrollTop  + vp.clientHeight / 2;
-  const ratio = newScale / scale;
-
-  scale = newScale;
+  const ratio = ns / scale;
+  scale = ns;
   document.getElementById('zoom-label').textContent = scale + '×';
   redrawAll();
-
   vp.scrollLeft = cx * ratio - vp.clientWidth  / 2;
   vp.scrollTop  = cy * ratio - vp.clientHeight / 2;
 }
 
 document.getElementById('zoom-in').onclick  = () => { if (scale < 6) setZoom(scale + 1); };
 document.getElementById('zoom-out').onclick = () => { if (scale > 1) setZoom(scale - 1); };
-
 viewport.addEventListener('wheel', (e) => {
   e.preventDefault();
-  const delta = e.deltaY < 0 ? 1 : -1;
-  const ns = Math.max(1, Math.min(6, scale + delta));
+  const ns = Math.max(1, Math.min(6, scale + (e.deltaY < 0 ? 1 : -1)));
   if (ns !== scale) setZoom(ns);
 }, { passive: false });
 
-// ─── Tool toggle ─────────────────────────────────────────────────────────────
+// ─── Tool / Layer toggles ────────────────────────────────────────────────────
 document.getElementById('tool-add').onclick = () => {
   mode = 'add';
   document.getElementById('tool-add').classList.add('active');
   document.getElementById('tool-remove').classList.remove('active');
-  canvas.style.cursor = 'crosshair';
 };
 document.getElementById('tool-remove').onclick = () => {
   mode = 'remove';
   document.getElementById('tool-remove').classList.add('active');
   document.getElementById('tool-add').classList.remove('active');
-  canvas.style.cursor = 'cell';
 };
 
-// ─── Grid toggle ─────────────────────────────────────────────────────────────
+document.getElementById('layer-coll-btn').onclick = () => {
+  layer = 'collision';
+  document.getElementById('layer-coll-btn').classList.add('active');
+  document.getElementById('layer-zone-btn').classList.remove('active');
+  document.getElementById('tool-add').textContent = '✏️ Pintar';
+};
+document.getElementById('layer-zone-btn').onclick = () => {
+  layer = 'zone';
+  document.getElementById('layer-zone-btn').classList.add('active');
+  document.getElementById('layer-coll-btn').classList.remove('active');
+  document.getElementById('tool-add').textContent = '🪑 Marcar Mesa';
+};
+
+// Grid toggle
 const gridBtn = document.getElementById('toggle-grid');
 gridBtn.classList.add('active');
 gridBtn.onclick = () => {
@@ -296,70 +314,70 @@ gridBtn.onclick = () => {
   redrawAll();
 };
 
-// ─── Clear all (keep outer walls) ────────────────────────────────────────────
-document.getElementById('clear-btn').onclick = () => {
-  if (!confirm('Remover TODAS as colisões? Isso não pode ser desfeito.')) return;
+// ─── Clear ───────────────────────────────────────────────────────────────────
+document.getElementById('clear-coll-btn').onclick = () => {
+  if (!confirm('Remover TODAS as colisões?')) return;
   collisions.fill(0);
   redrawAll();
 };
+document.getElementById('clear-zones-btn').onclick = () => {
+  if (!confirm('Remover TODAS as marcações de mesa?')) return;
+  zones.fill(0);
+  redrawAll();
+};
 
-// ─── Save to server ───────────────────────────────────────────────────────────
-document.getElementById('save-btn').onclick = async () => {
+// ─── Save ────────────────────────────────────────────────────────────────────
+async function saveData(url, body, msg) {
   const status = document.getElementById('status');
   status.textContent = '⏳ Salvando...';
   status.style.color = '#ffcc00';
   try {
-    const res = await fetch('/api/save-collisions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ collisions })
-    });
+    const res  = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await res.json();
-    if (data.ok) {
-      status.textContent = '✅ Salvo! Recarregue o jogo para ver.';
-      status.style.color = '#00cc66';
-    } else {
-      status.textContent = '❌ Erro ao salvar.';
-      status.style.color = '#ff4444';
-    }
-  } catch (err) {
+    status.textContent = data.ok ? `✅ ${msg} Recarregue o jogo.` : '❌ Erro ao salvar.';
+    status.style.color  = data.ok ? '#00cc66' : '#ff4444';
+  } catch {
     status.textContent = '❌ Erro de conexão.';
-    status.style.color = '#ff4444';
-  }
-};
-
-// ─── Load collisions from server ─────────────────────────────────────────────
-async function loadCollisions() {
-  try {
-    const res  = await fetch('/data/collisions.js?t=' + Date.now());
-    const text = await res.text();
-    const match = text.match(/\[([^\]]+)\]/s);
-    if (match) {
-      const parsed = match[1].split(',').map(n => parseInt(n.trim(), 10));
-      if (parsed.length === COLS * ROWS) {
-        collisions = parsed;
-      } else {
-        console.warn('Collision count mismatch:', parsed.length, 'vs', COLS * ROWS);
-      }
-    }
-  } catch (err) {
-    console.error('Erro ao carregar colisões:', err);
+    status.style.color  = '#ff4444';
   }
 }
 
-// ─── Boot ─────────────────────────────────────────────────────────────────────
+document.getElementById('save-coll-btn').onclick  = () => saveData('/api/save-collisions', { collisions }, 'Colisões salvas!');
+document.getElementById('save-zones-btn').onclick = () => saveData('/api/save-zones',      { zones },      'Mesas salvas!');
+
+// ─── Load ────────────────────────────────────────────────────────────────────
+async function loadArray(url, size) {
+  try {
+    const res  = await fetch(url + '?t=' + Date.now());
+    const text = await res.text();
+    const m    = text.match(/\[([^\]]+)\]/s);
+    if (m) {
+      const parsed = m[1].split(',').map(n => parseInt(n.trim(), 10));
+      if (parsed.length === size) return parsed;
+    }
+  } catch {}
+  return new Array(size).fill(0);
+}
+
+// ─── Boot ────────────────────────────────────────────────────────────────────
 (async () => {
   const status = document.getElementById('status');
-  await loadCollisions();
+  status.textContent = 'Carregando dados...';
+  status.style.color = '#aaa';
+
+  [collisions, zones] = await Promise.all([
+    loadArray('/data/collisions.js', COLS * ROWS),
+    loadArray('/data/zones.js',      COLS * ROWS),
+  ]);
 
   mapImg.onload = () => {
     mapLoaded = true;
-    status.textContent = 'Mapa carregado — clique para editar colisões';
+    status.textContent = 'Pronto — clique para editar';
     status.style.color = '#00cc66';
     redrawAll();
   };
   mapImg.onerror = () => {
-    status.textContent = 'Mapa carregado (sem imagem) — clique para editar';
+    status.textContent = 'Sem imagem do mapa — edite assim mesmo';
     status.style.color = '#ffcc00';
     redrawAll();
   };
