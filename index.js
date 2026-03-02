@@ -71,6 +71,9 @@ image.src = './img/map.png'
 const foregroundImage = new Image()
 foregroundImage.src = './img/foregroundObjects.png'
 
+const auraImage = new Image()
+auraImage.src = './img/aura.png'
+
 const playerDownImage = new Image()
 playerDownImage.src = './img/playerDown.png'
 
@@ -749,6 +752,7 @@ async function createPeerConnection(remoteId, isOfferer) {
         if (video.srcObject !== remoteStream) {
             video.srcObject = remoteStream
         }
+        applyFocusModeToVideo(video)
         video.play().catch(e => {
             console.warn(`Autoplay bloqueado para ${remoteId}:`, e)
         })
@@ -806,6 +810,34 @@ function getDistance(p1, p2) {
     const dx = p1.x - p2.x
     const dy = p1.y - p2.y
     return Math.sqrt(dx * dx + dy * dy)
+}
+
+// ── Modo Foco ────────────────────────────────────────────────────────────────
+let focusMode = false
+
+document.getElementById('focus-btn').addEventListener('click', () => {
+    focusMode = !focusMode
+    const btn = document.getElementById('focus-btn')
+    if (focusMode) {
+        btn.textContent = '⚡ Foco Ativo'
+        btn.style.background = 'rgba(255, 200, 0, 0.55)'
+        btn.style.color = '#fff'
+        btn.style.boxShadow = '0 0 12px rgba(255, 220, 0, 0.8)'
+        // Muta todos os áudios remotos
+        document.querySelectorAll('#video-container video').forEach(v => { v.muted = true })
+    } else {
+        btn.textContent = '🎯 Modo Foco'
+        btn.style.background = ''
+        btn.style.color = ''
+        btn.style.boxShadow = ''
+        // Restaura áudios remotos
+        document.querySelectorAll('#video-container video').forEach(v => { v.muted = false })
+    }
+})
+
+// Aplica mute/unmute quando novos peers se conectam durante o modo foco
+function applyFocusModeToVideo(video) {
+    if (focusMode) video.muted = true
 }
 
 function showToast(msg, duration = 3000) {
@@ -903,14 +935,32 @@ function animate() {
 
     player.draw()
 
-    // Draw communication aura for the local player
-    c.beginPath()
-    c.arc(player.position.x + player.width * SPRITE_SCALE / 2, player.position.y + 68 * SPRITE_SCALE / 2, PROXIMITY_THRESHOLD, 0, Math.PI * 2)
-    c.fillStyle = 'rgba(0, 255, 0, 0.15)'
-    c.fill()
-    c.strokeStyle = 'rgba(0, 255, 0, 0.5)'
-    c.stroke()
-    c.closePath()
+    // Draw player aura
+    const auraCx = player.position.x + player.width * SPRITE_SCALE / 2
+    const auraCy = player.position.y + 68 * SPRITE_SCALE / 2
+    if (focusMode) {
+        // ── Aura de chamas ao redor do personagem ────────────────────────────
+        const auraW = 180
+        const auraH = 220
+        const charBottom = player.position.y + 68 * SPRITE_SCALE
+        // base da chama nos pés, chamas sobem cobrindo o corpo todo
+        c.drawImage(
+            auraImage,
+            auraCx - auraW / 2,
+            charBottom - auraH * 0.84,
+            auraW,
+            auraH
+        )
+    } else {
+        // Aura verde normal (proximidade de voz)
+        c.beginPath()
+        c.arc(auraCx, auraCy, PROXIMITY_THRESHOLD, 0, Math.PI * 2)
+        c.fillStyle = 'rgba(0, 255, 0, 0.15)'
+        c.fill()
+        c.strokeStyle = 'rgba(0, 255, 0, 0.5)'
+        c.stroke()
+        c.closePath()
+    }
 
     const myWorldPos = {
         x: player.position.x - background.position.x,
