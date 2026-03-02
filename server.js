@@ -378,6 +378,13 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('focusMode', ({ active }) => {
+        if (players[socket.id]) {
+            players[socket.id].focusMode = active;
+            socket.broadcast.emit('playerFocusMode', { id: socket.id, active });
+        }
+    });
+
     // ── Call tracking ────────────────────────────────────────────────────────
     socket.on('callEstablished', ({ with: peerId }) => {
         callAdd(socket.id, peerId);
@@ -393,35 +400,50 @@ io.on('connection', (socket) => {
 
     // ── Knock to join ────────────────────────────────────────────────────────
     socket.on('knock', ({ targetId }) => {
-        const group = callGroup(targetId);
-        if (group.length === 0) {
-            // Alvo não está em chamada, pode conectar direto
+        const senderGroup = callGroup(socket.id);  // chamada do remetente
+        const targetGroup = callGroup(targetId);    // chamada do alvo
+
+        let groupMembers, newcomerId;
+
+        if (targetGroup.length > 0 && !targetGroup.includes(socket.id)) {
+            // Alvo está em chamada → remetente é o recém-chegado
+            newcomerId   = socket.id;
+            groupMembers = [targetId, ...targetGroup];
+        } else if (senderGroup.length > 0 && !senderGroup.includes(targetId)) {
+            // Remetente está em chamada → alvo é o recém-chegado
+            newcomerId   = targetId;
+            groupMembers = [socket.id, ...senderGroup];
+        } else {
+            // Nenhum dos dois está em chamada — conecta direto
             socket.emit('knockNotNeeded', { targetId });
             return;
         }
-        if (pendingKnocks.has(socket.id)) return; // Já tem knock pendente
 
-        const members = [targetId, ...group];
-        const knockerName = players[socket.id]?.name || 'Alguém';
+        // Evita knock duplicado para o mesmo recém-chegado
+        if (pendingKnocks.has(newcomerId)) return;
 
-        members.forEach(memberId => {
-            io.to(memberId).emit('knockRequest', {
-                knockerId: socket.id,
-                knockerName,
-                members
-            });
-        });
-
+        const newcomerName = players[newcomerId]?.name || 'Alguém';
         const timer = setTimeout(() => {
-            if (pendingKnocks.has(socket.id)) {
-                pendingKnocks.delete(socket.id);
-                socket.emit('knockRejected', { reason: 'timeout' });
-                // Limpa notificação nos membros
-                members.forEach(m => io.to(m).emit('knockExpired', { knockerId: socket.id }));
+            if (pendingKnocks.has(newcomerId)) {
+                pendingKnocks.delete(newcomerId);
+                io.to(newcomerId).emit('knockRejected', { reason: 'timeout' });
+                groupMembers.forEach(m => io.to(m).emit('knockExpired', { knockerId: newcomerId }));
             }
         }, 15000);
 
-        pendingKnocks.set(socket.id, { members, timer });
+        pendingKnocks.set(newcomerId, { members: groupMembers, timer });
+
+        // Notifica os membros do grupo
+        groupMembers.forEach(memberId => {
+            io.to(memberId).emit('knockRequest', {
+                knockerId: newcomerId,
+                knockerName: newcomerName,
+                members: groupMembers
+            });
+        });
+
+        // Avisa o recém-chegado que está aguardando aprovação
+        io.to(newcomerId).emit('knockPending', { groupMembers });
     });
 
     socket.on('knockResponse', ({ knockerId, accepted }) => {
@@ -431,17 +453,13 @@ io.on('connection', (socket) => {
         pendingKnocks.delete(knockerId);
 
         const responderName = players[socket.id]?.name || 'Alguém';
-
-        // Limpa a notificação em todos os membros
         pending.members.forEach(m => io.to(m).emit('knockExpired', { knockerId }));
 
         if (accepted) {
-            // Diz ao knocker para conectar a todos os membros
             io.to(knockerId).emit('knockAccepted', {
                 members: pending.members,
                 acceptedByName: responderName
             });
-            // Diz a todos os membros que o knocker foi aprovado
             pending.members.forEach(m => {
                 io.to(m).emit('knockerApproved', {
                     knockerId,

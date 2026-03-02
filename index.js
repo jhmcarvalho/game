@@ -209,8 +209,11 @@ socket.on('init', (players) => {
                 name: players[id].name,
                 scale: SPRITE_SCALE
             })
+            remoteFocusMode[id] = !!players[id].focusMode
         }
     })
+    // Informa meu estado de foco para os outros (caso já esteja ativo)
+    if (focusMode) socket.emit('focusMode', { active: true })
 })
 
 socket.on('newPlayer', ({ id, player: p }) => {
@@ -235,6 +238,7 @@ socket.on('playerMove', ({ id, x, y, sprite }) => {
 
 socket.on('playerDisconnected', (id) => {
     delete remotePlayers[id]
+    delete remoteFocusMode[id]
     if (peers[id]) {
         peers[id].close()
         delete peers[id]
@@ -742,6 +746,12 @@ socket.on('knockerApproved', ({ knockerId }) => {
 socket.on('knockExpired',  ({ knockerId }) => hideKnockNotification(knockerId))
 socket.on('knockRequest',  ({ knockerId, knockerName }) => showKnockNotification(knockerId, knockerName))
 
+socket.on('knockPending', ({ groupMembers }) => {
+    // Sou o recém-chegado: aguardo aprovação do grupo
+    groupMembers.forEach(m => knockedSet.add(m))
+    showToast('👋 Aguardando permissão para entrar na conversa...')
+})
+
 async function createPeerConnection(remoteId, isOfferer) {
     const pc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -865,16 +875,21 @@ document.getElementById('focus-btn').addEventListener('click', () => {
         btn.style.background = 'rgba(255, 200, 0, 0.55)'
         btn.style.color = '#fff'
         btn.style.boxShadow = '0 0 12px rgba(255, 220, 0, 0.8)'
-        // Muta todos os áudios remotos
         document.querySelectorAll('#video-container video').forEach(v => { v.muted = true })
     } else {
         btn.textContent = '🎯 Modo Foco'
         btn.style.background = ''
         btn.style.color = ''
         btn.style.boxShadow = ''
-        // Restaura áudios remotos
         document.querySelectorAll('#video-container video').forEach(v => { v.muted = false })
     }
+    socket.emit('focusMode', { active: focusMode })
+})
+
+// Estado de foco dos jogadores remotos
+const remoteFocusMode = {}
+socket.on('playerFocusMode', ({ id, active }) => {
+    remoteFocusMode[id] = active
 })
 
 // Aplica mute/unmute quando novos peers se conectam durante o modo foco
@@ -1056,6 +1071,14 @@ function animate() {
 
     Object.keys(remotePlayers).forEach(id => {
         const rp = remotePlayers[id]
+
+        // Aura de foco para jogadores remotos
+        if (remoteFocusMode[id]) {
+            const rpAuraCx = rp.position.x + rp.width * SPRITE_SCALE / 2
+            const rpBottom = rp.position.y + 68 * SPRITE_SCALE
+            c.drawImage(auraImage, rpAuraCx - 90, rpBottom - 220 * 0.84, 180, 220)
+        }
+
         rp.draw()
 
         // Proximity Logic
@@ -1072,16 +1095,16 @@ function animate() {
                 delete approvalTimeouts[id]
             }
 
-            if (!peers[id] && socket.id > id) {
-                if (approvedSet.has(id)) {
-                    // Aprovação válida (nova ou dentro da tolerância) — conecta diretamente
+            if (!peers[id]) {
+                if (approvedSet.has(id) && socket.id > id) {
+                    // Aprovado + sou o iniciador → cria WebRTC
                     createPeerConnection(id, true)
-                } else if (!knockedSet.has(id)) {
-                    // Pergunta ao servidor se pode conectar direto ou precisa de permissão
+                } else if (!knockedSet.has(id) && !approvedSet.has(id)) {
+                    // Pergunta ao servidor (ele decide quem é o recém-chegado)
                     knockedSet.add(id)
                     socket.emit('knock', { targetId: id })
                 }
-                // Se ainda está em knockedSet, aguardando resposta do servidor
+                // Se em knockedSet ou approvedSet sem ser iniciador: aguarda
             }
 
             // Draw aura for remote player in range
