@@ -465,7 +465,9 @@ document.getElementById('my-desk-btn').addEventListener('click', () => {
     const dy = targetY - currentY
     movables.forEach(m => { m.position.x -= dx; m.position.y -= dy })
     Object.values(remotePlayers).forEach(rp => { rp.position.x -= dx; rp.position.y -= dy })
-    socket.emit('playerMove', { x: targetX, y: targetY, sprite: 'down' })
+    player.image = player.sprites.up
+    player.moving = false
+    socket.emit('playerMove', { x: targetX, y: targetY, sprite: 'up' })
 })
 
 document.getElementById('start-game-btn').addEventListener('click', async () => {
