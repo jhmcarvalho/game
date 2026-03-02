@@ -309,6 +309,27 @@ app.patch('/api/auth/profile', async (req, res) => {
 
 const players = {};
 
+// ── Knock-to-join: rastreia quem está em chamada com quem ────────────────────
+const callGraph    = new Map(); // socketId → Set<socketId>
+const pendingKnocks = new Map(); // knockerId → { members: string[], timer }
+
+function callAdd(a, b) {
+    if (!callGraph.has(a)) callGraph.set(a, new Set());
+    if (!callGraph.has(b)) callGraph.set(b, new Set());
+    callGraph.get(a).add(b);
+    callGraph.get(b).add(a);
+}
+function callRemove(a, b) {
+    callGraph.get(a)?.delete(b);
+    callGraph.get(b)?.delete(a);
+}
+function callGroup(id) {
+    return [...(callGraph.get(id) || new Set())];
+}
+function broadcastCallState(id) {
+    io.emit('callState', { playerId: id, peers: callGroup(id) });
+}
+
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
@@ -357,6 +378,89 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ── Call tracking ────────────────────────────────────────────────────────
+    socket.on('callEstablished', ({ with: peerId }) => {
+        callAdd(socket.id, peerId);
+        broadcastCallState(socket.id);
+        broadcastCallState(peerId);
+    });
+
+    socket.on('callEnded', ({ with: peerId }) => {
+        callRemove(socket.id, peerId);
+        broadcastCallState(socket.id);
+        broadcastCallState(peerId);
+    });
+
+    // ── Knock to join ────────────────────────────────────────────────────────
+    socket.on('knock', ({ targetId }) => {
+        const group = callGroup(targetId);
+        if (group.length === 0) {
+            // Alvo não está em chamada, pode conectar direto
+            socket.emit('knockNotNeeded', { targetId });
+            return;
+        }
+        if (pendingKnocks.has(socket.id)) return; // Já tem knock pendente
+
+        const members = [targetId, ...group];
+        const knockerName = players[socket.id]?.name || 'Alguém';
+
+        members.forEach(memberId => {
+            io.to(memberId).emit('knockRequest', {
+                knockerId: socket.id,
+                knockerName,
+                members
+            });
+        });
+
+        const timer = setTimeout(() => {
+            if (pendingKnocks.has(socket.id)) {
+                pendingKnocks.delete(socket.id);
+                socket.emit('knockRejected', { reason: 'timeout' });
+                // Limpa notificação nos membros
+                members.forEach(m => io.to(m).emit('knockExpired', { knockerId: socket.id }));
+            }
+        }, 15000);
+
+        pendingKnocks.set(socket.id, { members, timer });
+    });
+
+    socket.on('knockResponse', ({ knockerId, accepted }) => {
+        const pending = pendingKnocks.get(knockerId);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        pendingKnocks.delete(knockerId);
+
+        const responderName = players[socket.id]?.name || 'Alguém';
+
+        // Limpa a notificação em todos os membros
+        pending.members.forEach(m => io.to(m).emit('knockExpired', { knockerId }));
+
+        if (accepted) {
+            // Diz ao knocker para conectar a todos os membros
+            io.to(knockerId).emit('knockAccepted', {
+                members: pending.members,
+                acceptedByName: responderName
+            });
+            // Diz a todos os membros que o knocker foi aprovado
+            pending.members.forEach(m => {
+                io.to(m).emit('knockerApproved', {
+                    knockerId,
+                    knockerName: players[knockerId]?.name || 'Alguém'
+                });
+            });
+        } else {
+            io.to(knockerId).emit('knockRejected', { rejectedByName: responderName });
+        }
+    });
+
+    socket.on('cancelKnock', () => {
+        const pending = pendingKnocks.get(socket.id);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        pendingKnocks.delete(socket.id);
+        pending.members.forEach(m => io.to(m).emit('knockExpired', { knockerId: socket.id }));
+    });
+
     // WebRTC Signaling
     socket.on('signal', (data) => {
         // data should contain { to: recipientId, signal: webRTCData }
@@ -382,6 +486,19 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
         delete players[socket.id];
+        // Limpa grafo de chamadas
+        callGroup(socket.id).forEach(peerId => {
+            callGraph.get(peerId)?.delete(socket.id);
+            broadcastCallState(peerId);
+        });
+        callGraph.delete(socket.id);
+        // Cancela knock pendente
+        const pending = pendingKnocks.get(socket.id);
+        if (pending) {
+            clearTimeout(pending.timer);
+            pending.members.forEach(m => io.to(m).emit('knockExpired', { knockerId: socket.id }));
+            pendingKnocks.delete(socket.id);
+        }
         io.emit('playerDisconnected', socket.id);
     });
 });

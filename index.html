@@ -443,6 +443,95 @@
     .toggle-password:hover {
         opacity: 1;
     }
+
+    /* ── Knock notifications ──────────────────────────────────── */
+    #knock-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 500;
+        pointer-events: none;
+    }
+
+    .knock-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: rgba(20, 20, 30, 0.92);
+        border: 1px solid rgba(0, 170, 255, 0.5);
+        border-radius: 12px;
+        padding: 12px 16px;
+        min-width: 300px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(8px);
+        pointer-events: auto;
+        animation: knockSlideIn 0.3s ease;
+    }
+
+    @keyframes knockSlideIn {
+        from { opacity: 0; transform: translateX(40px); }
+        to   { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes knockFadeOut {
+        from { opacity: 1; transform: translateX(0); }
+        to   { opacity: 0; transform: translateX(40px); }
+    }
+
+    .knock-avatar {
+        font-size: 28px;
+        flex-shrink: 0;
+    }
+
+    .knock-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .knock-info strong {
+        color: #00aaff;
+        font-size: 14px;
+    }
+
+    .knock-info span {
+        color: #aaa;
+        font-size: 12px;
+    }
+
+    .knock-actions {
+        display: flex;
+        gap: 6px;
+        flex-shrink: 0;
+    }
+
+    .knock-accept, .knock-reject {
+        padding: 6px 10px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        transition: opacity 0.2s;
+    }
+
+    .knock-accept {
+        background: rgba(0, 200, 100, 0.8);
+        color: #fff;
+    }
+
+    .knock-reject {
+        background: rgba(200, 50, 50, 0.8);
+        color: #fff;
+    }
+
+    .knock-accept:hover, .knock-reject:hover {
+        opacity: 0.85;
+    }
 </style>
 
 <div id="setup-overlay">
@@ -542,6 +631,9 @@
     </div>
     <video id="screen-share-video" autoplay playsinline></video>
 </div>
+
+<!-- Knock notifications -->
+<div id="knock-container"></div>
 
 <div id="ui-layer">
     <button id="toggle-mic" class="control-btn">🎙️ Mute</button>

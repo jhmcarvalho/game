@@ -708,12 +708,54 @@ document.getElementById('watch-screen').addEventListener('click', () => {
     }
 })
 
+// ── Knock-to-join ────────────────────────────────────────────────────────────
+// O servidor é a fonte da verdade: sempre enviamos 'knock' antes de conectar.
+// O servidor responde 'knockNotNeeded' (conecta direto) ou inicia o fluxo de permissão.
+const knockedSet       = new Set()  // jogadores aos quais já bati na porta
+const approvedSet      = new Set()  // jogadores dos quais recebi aprovação
+const approvalTimeouts = {}          // id → timer de expiração da tolerância (1 min)
+
+socket.on('knockNotNeeded', ({ targetId }) => {
+    // Sem chamada em andamento — pode conectar direto
+    approvedSet.add(targetId)
+    knockedSet.delete(targetId)
+})
+
+socket.on('knockAccepted', ({ members, acceptedByName }) => {
+    showToast(`✅ ${acceptedByName} aceitou sua entrada!`)
+    members.forEach(m => { approvedSet.add(m); knockedSet.delete(m) })
+})
+
+socket.on('knockRejected', ({ rejectedByName, reason }) => {
+    const msg = reason === 'timeout'
+        ? '⏱️ Sem resposta — entrada negada.'
+        : `❌ ${rejectedByName || 'Participante'} recusou sua entrada.`
+    showToast(msg, 4000)
+    setTimeout(() => knockedSet.clear(), 10000)
+})
+
+socket.on('knockerApproved', ({ knockerId }) => {
+    approvedSet.add(knockerId)
+    hideKnockNotification(knockerId)
+})
+
+socket.on('knockExpired',  ({ knockerId }) => hideKnockNotification(knockerId))
+socket.on('knockRequest',  ({ knockerId, knockerName }) => showKnockNotification(knockerId, knockerName))
+
 async function createPeerConnection(remoteId, isOfferer) {
     const pc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     })
 
     peers[remoteId] = pc
+
+    pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'connected') {
+            socket.emit('callEstablished', { with: remoteId })
+        } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+            socket.emit('callEnded', { with: remoteId })
+        }
+    }
 
     pc.onicecandidate = (event) => {
         if (event.candidate) {
@@ -838,6 +880,51 @@ document.getElementById('focus-btn').addEventListener('click', () => {
 // Aplica mute/unmute quando novos peers se conectam durante o modo foco
 function applyFocusModeToVideo(video) {
     if (focusMode) video.muted = true
+}
+
+// ── Notificações de knock ─────────────────────────────────────────────────────
+function showKnockNotification(knockerId, knockerName) {
+    let container = document.getElementById('knock-container')
+    if (!container) return
+
+    // Evita duplicata
+    if (document.getElementById(`knock-${knockerId}`)) return
+
+    const card = document.createElement('div')
+    card.id = `knock-${knockerId}`
+    card.className = 'knock-card'
+    card.innerHTML = `
+        <div class="knock-avatar">👋</div>
+        <div class="knock-info">
+            <strong>${knockerName}</strong>
+            <span>quer entrar na conversa</span>
+        </div>
+        <div class="knock-actions">
+            <button class="knock-accept" data-id="${knockerId}">✅ Aceitar</button>
+            <button class="knock-reject" data-id="${knockerId}">❌ Recusar</button>
+        </div>`
+
+    card.querySelector('.knock-accept').addEventListener('click', () => {
+        socket.emit('knockResponse', { knockerId, accepted: true })
+        hideKnockNotification(knockerId)
+    })
+    card.querySelector('.knock-reject').addEventListener('click', () => {
+        socket.emit('knockResponse', { knockerId, accepted: false })
+        hideKnockNotification(knockerId)
+    })
+
+    container.appendChild(card)
+
+    // Auto-expira em 15s
+    setTimeout(() => hideKnockNotification(knockerId), 15000)
+}
+
+function hideKnockNotification(knockerId) {
+    const card = document.getElementById(`knock-${knockerId}`)
+    if (card) {
+        card.style.animation = 'knockFadeOut 0.3s ease forwards'
+        setTimeout(() => card.remove(), 300)
+    }
 }
 
 function showToast(msg, duration = 3000) {
@@ -979,10 +1066,22 @@ function animate() {
         const dist = getDistance(myWorldPos, rpWorldPos)
 
         if (dist < PROXIMITY_THRESHOLD) {
-            // Tie-breaker: only one peer initiates (the one with 'higher' ID)
+            // Voltou na janela de tolerância — cancela o timer de expiração
+            if (approvalTimeouts[id]) {
+                clearTimeout(approvalTimeouts[id])
+                delete approvalTimeouts[id]
+            }
+
             if (!peers[id] && socket.id > id) {
-                console.log(`Perto de ${id}, iniciando chamada (sou iniciador)...`)
-                createPeerConnection(id, true)
+                if (approvedSet.has(id)) {
+                    // Aprovação válida (nova ou dentro da tolerância) — conecta diretamente
+                    createPeerConnection(id, true)
+                } else if (!knockedSet.has(id)) {
+                    // Pergunta ao servidor se pode conectar direto ou precisa de permissão
+                    knockedSet.add(id)
+                    socket.emit('knock', { targetId: id })
+                }
+                // Se ainda está em knockedSet, aguardando resposta do servidor
             }
 
             // Draw aura for remote player in range
@@ -992,11 +1091,31 @@ function animate() {
             c.fill()
             c.closePath()
 
-            // Visual feedback: Hearing label
-            c.fillStyle = 'white'
-            c.font = '16px Arial'
-            c.fillText('🔊 Calling...', rp.position.x, rp.position.y - 10)
+            if (knockedSet.has(id)) {
+                c.fillStyle = 'white'
+                c.font = '14px Arial'
+                c.fillText('🚪 Aguardando...', rp.position.x, rp.position.y - 10)
+            } else if (peers[id]) {
+                c.fillStyle = 'white'
+                c.font = '16px Arial'
+                c.fillText('🔊 Calling...', rp.position.x, rp.position.y - 10)
+            }
         } else {
+            // Se estava aguardando knock, cancela
+            if (knockedSet.has(id)) {
+                knockedSet.delete(id)
+                socket.emit('cancelKnock')
+                showToast('👋 Saiu da área — knock cancelado.')
+            }
+
+            // Se saiu estando aprovado, inicia tolerância de 1 minuto para retornar sem pedir permissão
+            if (approvedSet.has(id) && !approvalTimeouts[id]) {
+                approvalTimeouts[id] = setTimeout(() => {
+                    approvedSet.delete(id)
+                    delete approvalTimeouts[id]
+                }, 60_000)
+            }
+
             if (peers[id] || screenPeers[id]) {
                 console.log(`Afastou-se de ${id}, fechando conexões. (peers: ${!!peers[id]}, screenPeers: ${!!screenPeers[id]})`)
 
@@ -1004,9 +1123,11 @@ function animate() {
                     const pc = peers[id]
                     pc.onicecandidate = null
                     pc.ontrack = null
+                    pc.onconnectionstatechange = null
                     pc.getSenders().forEach(sender => pc.removeTrack(sender))
                     pc.close()
                     delete peers[id]
+                    socket.emit('callEnded', { with: id }) // explícito, não depende de evento
                 }
 
                 // Screen share peer cleanup
